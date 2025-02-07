@@ -66,7 +66,7 @@ class TimeScale {
       minHour: timeIntervals.minHour,
       minDate: timeIntervals.minDate,
       minMonth: timeIntervals.minMonth,
-      minYear: timeIntervals.minYear
+      minYear: timeIntervals.minYear,
     }
 
     let currentMillisecond = firstVal.minMillisecond
@@ -97,7 +97,7 @@ class TimeScale {
       numberOfHours,
       numberOfDays,
       numberOfMonths,
-      numberOfYears
+      numberOfYears,
     }
 
     switch (this.tickInterval) {
@@ -142,31 +142,31 @@ class TimeScale {
         year: ts.year,
         day: ts.day ? ts.day : 1,
         hour: ts.hour ? ts.hour : 0,
-        month: ts.month + 1
+        month: ts.month + 1,
       }
       if (ts.unit === 'month') {
         return {
           ...defaultReturn,
           day: 1,
-          value: ts.value + 1
+          value: ts.value + 1,
         }
       } else if (ts.unit === 'day' || ts.unit === 'hour') {
         return {
           ...defaultReturn,
-          value: ts.value
+          value: ts.value,
         }
       } else if (ts.unit === 'minute') {
         return {
           ...defaultReturn,
           value: ts.value,
-          minute: ts.value
+          minute: ts.value,
         }
       } else if (ts.unit === 'second') {
         return {
           ...defaultReturn,
           value: ts.value,
           minute: ts.minute,
-          second: ts.second
+          second: ts.second,
         }
       }
 
@@ -348,7 +348,7 @@ class TimeScale {
     currentMonth,
     currentYear,
     daysWidthOnXAxis,
-    numberOfYears
+    numberOfYears,
   }) {
     let firstTickValue = firstVal.minYear
     let firstTickPosition = 0
@@ -376,7 +376,7 @@ class TimeScale {
         value: firstTickValue,
         unit,
         year: firstTickValue,
-        month: Utils.monthMod(currentMonth + 1)
+        month: Utils.monthMod(currentMonth + 1),
       })
     } else if (firstVal.minDate === 1 && firstVal.minMonth === 0) {
       // push the first tick in the array
@@ -385,7 +385,7 @@ class TimeScale {
         value: firstTickValue,
         unit,
         year: currentYear,
-        month: Utils.monthMod(currentMonth + 1)
+        month: Utils.monthMod(currentMonth + 1),
       })
     }
 
@@ -401,7 +401,7 @@ class TimeScale {
         value: year,
         unit,
         year,
-        month: 1
+        month: 1,
       })
     }
   }
@@ -412,7 +412,7 @@ class TimeScale {
     currentMonth,
     currentYear,
     daysWidthOnXAxis,
-    numberOfMonths
+    numberOfMonths,
   }) {
     let firstTickValue = currentMonth
     let firstTickPosition = 0
@@ -449,7 +449,7 @@ class TimeScale {
         value,
         unit,
         year,
-        month
+        month,
       })
     } else {
       // push the first tick in the array
@@ -458,7 +458,7 @@ class TimeScale {
         value: firstTickValue,
         unit,
         year: currentYear,
-        month: Utils.monthMod(currentMonth)
+        month: Utils.monthMod(currentMonth),
       })
     }
 
@@ -484,7 +484,7 @@ class TimeScale {
         value: monthVal,
         unit,
         year,
-        month: month === 0 ? 1 : month
+        month: month === 0 ? 1 : month,
       })
       month++
     }
@@ -495,7 +495,7 @@ class TimeScale {
     currentMonth,
     currentYear,
     hoursWidthOnXAxis,
-    numberOfDays
+    numberOfDays,
   }) {
     const dt = new DateTime(this.ctx)
     let unit = 'day'
@@ -531,7 +531,8 @@ class TimeScale {
       val = Utils.monthMod(firstVal.minMonth)
       unit = 'month'
       date = firstVal.minDate
-      numberOfDays++
+      // numberOfDays++
+      // removed the above line to fix https://github.com/apexcharts/apexcharts.js/issues/305#issuecomment-1019520513
     } else if (
       firstVal.minDate !== 1 &&
       firstVal.minHour === 0 &&
@@ -553,7 +554,7 @@ class TimeScale {
       unit,
       year: this._getYear(currentYear, month, yrCounter),
       month: Utils.monthMod(month),
-      day: date
+      day: date,
     })
 
     let pos = firstTickPosition
@@ -577,7 +578,7 @@ class TimeScale {
         unit,
         year,
         month: Utils.monthMod(month),
-        day: value
+        day: value,
       })
     }
   }
@@ -588,7 +589,7 @@ class TimeScale {
     currentMonth,
     currentYear,
     minutesWidthOnXAxis,
-    numberOfHours
+    numberOfHours,
   }) {
     const dt = new DateTime(this.ctx)
 
@@ -619,17 +620,27 @@ class TimeScale {
 
     let firstTickPosition = remainingMins * minutesWidthOnXAxis
     let firstTickValue = firstVal.minHour + 1
-    let hour = firstTickValue + 1
+    let hour = firstTickValue
 
     if (remainingMins === 60) {
       firstTickPosition = 0
       firstTickValue = firstVal.minHour
-      hour = firstTickValue + 1
+      hour = firstTickValue
     }
 
     let date = currentDate
 
-    let month = changeMonth(date, currentMonth)
+    // we need to apply date switching logic here as well, to avoid duplicated labels
+    if (hour >= 24) {
+      hour = 0
+      date += 1
+      unit = 'day'
+    }
+
+    const checkNextMonth = changeDate(date, currentMonth)
+
+    let month = checkNextMonth.month
+    month = changeMonth(date, month)
 
     // push the first tick in the array
     this.timeScaleArray.push({
@@ -639,8 +650,10 @@ class TimeScale {
       day: date,
       hour,
       year: currentYear,
-      month: Utils.monthMod(month)
+      month: Utils.monthMod(month),
     })
+
+    hour++
 
     let pos = firstTickPosition
     // keep drawing rest of the ticks
@@ -659,10 +672,7 @@ class TimeScale {
       }
 
       let year = this._getYear(currentYear, month, yrCounter)
-      pos =
-        hour === 0 && i === 0
-          ? remainingMins * minutesWidthOnXAxis
-          : 60 * minutesWidthOnXAxis + pos
+      pos = 60 * minutesWidthOnXAxis + pos
       let val = hour === 0 ? date : hour
       this.timeScaleArray.push({
         position: pos,
@@ -671,7 +681,7 @@ class TimeScale {
         hour,
         day: date,
         year,
-        month: Utils.monthMod(month)
+        month: Utils.monthMod(month),
       })
 
       hour++
@@ -688,7 +698,7 @@ class TimeScale {
     currentYear,
     minutesWidthOnXAxis,
     secondsWidthOnXAxis,
-    numberOfMinutes
+    numberOfMinutes,
   }) {
     let yrCounter = 0
     let unit = 'minute'
@@ -721,7 +731,7 @@ class TimeScale {
         minute,
         day: date,
         year: this._getYear(year, month, yrCounter),
-        month: Utils.monthMod(month)
+        month: Utils.monthMod(month),
       })
 
       pos += minutesWidthOnXAxis
@@ -738,7 +748,7 @@ class TimeScale {
     currentMonth,
     currentYear,
     secondsWidthOnXAxis,
-    numberOfSeconds
+    numberOfSeconds,
   }) {
     let yrCounter = 0
     let unit = 'second'
@@ -776,7 +786,7 @@ class TimeScale {
         second,
         day: date,
         year: this._getYear(year, month, yrCounter),
-        month: Utils.monthMod(month)
+        month: Utils.monthMod(month),
       })
 
       pos += secondsWidthOnXAxis
@@ -862,7 +872,7 @@ class TimeScale {
         value,
         unit: ts.unit,
         year: ts.year,
-        month: ts.month
+        month: ts.month,
       }
     })
 

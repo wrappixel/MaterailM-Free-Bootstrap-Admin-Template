@@ -2,13 +2,23 @@
 // Header Style
 // ----------------------------------------------
 
+.app-topstrip{
+  position: fixed;
+  top: 0;
+  z-index: 12;
+}
+
 .app-header {
   position: relative;
   z-index: 50;
   width: 100%;
   background: $body-bg;
-  padding: 0 25px;
-  top: 0;
+  padding: 0 10px;
+  top: 65px;
+
+  @include media-breakpoint-down(lg){
+    top: 131px;
+  }
 
   .container-fluid {
     max-width: $boxed-width;

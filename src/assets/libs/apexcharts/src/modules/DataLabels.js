@@ -55,8 +55,9 @@ class DataLabels {
       let lastDataLabelRect = w.globals.dataLabelsRects[i][lastDrawnIndex]
       if (
         // next label forward and x not intersecting
-        x > lastDataLabelRect.x + lastDataLabelRect.width + 2 ||
-        y > lastDataLabelRect.y + lastDataLabelRect.height + 2 ||
+        x > lastDataLabelRect.x + lastDataLabelRect.width ||
+        y > lastDataLabelRect.y + lastDataLabelRect.height ||
+        y + height < lastDataLabelRect.y ||
         x + width < lastDataLabelRect.x // next label is going to be drawn backwards
       ) {
         // the 2 indexes don't override, so OK to draw next label
@@ -72,14 +73,15 @@ class DataLabels {
       x,
       y,
       textRects,
-      drawnextLabel
+      drawnextLabel,
     }
   }
 
-  drawDataLabel(pos, i, j, z = null, strokeWidth = 2) {
+  drawDataLabel({ type, pos, i, j, isRangeStart, strokeWidth = 2 }) {
     // this method handles line, area, bubble, scatter charts as those charts contains markers/points which have pre-defined x/y positions
     // all other charts like radar / bars / heatmaps will define their own drawDataLabel routine
     let w = this.w
+
     const graphics = new Graphics(this.ctx)
 
     let dataLabelsConfig = w.config.dataLabels
@@ -91,12 +93,14 @@ class DataLabels {
 
     let elDataLabelsWrap = null
 
-    if (!dataLabelsConfig.enabled || !Array.isArray(pos.x)) {
+    const seriesCollapsed = w.globals.collapsedSeriesIndices.indexOf(i) !== -1
+
+    if (seriesCollapsed || !dataLabelsConfig.enabled || !Array.isArray(pos.x)) {
       return elDataLabelsWrap
     }
 
     elDataLabelsWrap = graphics.group({
-      class: 'apexcharts-data-labels'
+      class: 'apexcharts-data-labels',
     })
 
     for (let q = 0; q < pos.x.length; q++) {
@@ -110,6 +114,14 @@ class DataLabels {
 
         let val = w.globals.series[i][dataPointIndex]
 
+        if (type === 'rangeArea') {
+          if (isRangeStart) {
+            val = w.globals.seriesRangeStart[i][dataPointIndex]
+          } else {
+            val = w.globals.seriesRangeEnd[i][dataPointIndex]
+          }
+        }
+
         let text = ''
 
         const getText = (v) => {
@@ -117,7 +129,7 @@ class DataLabels {
             ctx: this.ctx,
             seriesIndex: i,
             dataPointIndex,
-            w
+            w,
           })
         }
 
@@ -139,6 +151,18 @@ class DataLabels {
           }
         }
 
+        let textAnchor = w.config.dataLabels.textAnchor
+
+        if (w.globals.isSlopeChart) {
+          if (dataPointIndex === 0) {
+            textAnchor = 'end'
+          } else if (dataPointIndex === w.config.series[i].data.length - 1) {
+            textAnchor = 'start'
+          } else {
+            textAnchor = 'middle'
+          }
+        }
+
         this.plotDataLabelsText({
           x,
           y,
@@ -147,7 +171,8 @@ class DataLabels {
           j: dataPointIndex,
           parent: elDataLabelsWrap,
           offsetCorrection: true,
-          dataLabelsConfig: w.config.dataLabels
+          dataLabelsConfig: w.config.dataLabels,
+          textAnchor,
         })
       }
     }
@@ -170,12 +195,14 @@ class DataLabels {
       dataLabelsConfig,
       color,
       alwaysDrawDataLabel,
-      offsetCorrection
+      offsetCorrection,
+      className,
     } = opts
 
+    let dataLabelText = null
     if (Array.isArray(w.config.dataLabels.enabledOnSeries)) {
       if (w.config.dataLabels.enabledOnSeries.indexOf(i) < 0) {
-        return
+        return dataLabelText
       }
     }
 
@@ -183,7 +210,7 @@ class DataLabels {
       x,
       y,
       drawnextLabel: true,
-      textRects: null
+      textRects: null,
     }
 
     if (offsetCorrection) {
@@ -208,8 +235,8 @@ class DataLabels {
     if (correctedLabels.textRects) {
       // fixes #2264
       if (
-        x < -10 - correctedLabels.textRects.width ||
-        x > w.globals.gridWidth + correctedLabels.textRects.width + 10
+        x < -20 - correctedLabels.textRects.width ||
+        x > w.globals.gridWidth + correctedLabels.textRects.width + 30
       ) {
         // datalabels fall outside drawing area, so draw a blank label
         text = ''
@@ -229,7 +256,7 @@ class DataLabels {
         series: w.globals.series,
         seriesIndex: i,
         dataPointIndex: j,
-        w
+        w,
       })
     }
     if (color) {
@@ -247,8 +274,17 @@ class DataLabels {
       offY = 0
     }
 
+    if (w.globals.isSlopeChart) {
+      if (j !== 0) {
+        offX = dataLabelsConfig.offsetX * -2 + 5
+      }
+      if (j !== 0 && j !== w.config.series[i].data.length - 1) {
+        offX = 0
+      }
+    }
+
     if (correctedLabels.drawnextLabel) {
-      let dataLabelText = graphics.drawText({
+      dataLabelText = graphics.drawText({
         width: 100,
         height: parseInt(dataLabelsConfig.style.fontSize, 10),
         x: x + offX,
@@ -258,13 +294,13 @@ class DataLabels {
         text,
         fontSize: fontSize || dataLabelsConfig.style.fontSize,
         fontFamily: dataLabelsConfig.style.fontFamily,
-        fontWeight: dataLabelsConfig.style.fontWeight || 'normal'
+        fontWeight: dataLabelsConfig.style.fontWeight || 'normal',
       })
 
       dataLabelText.attr({
-        class: 'apexcharts-datalabel',
+        class: className || 'apexcharts-datalabel',
         cx: x,
-        cy: y
+        cy: y,
       })
 
       if (dataLabelsConfig.dropShadow.enabled) {
@@ -281,6 +317,8 @@ class DataLabels {
 
       w.globals.lastDrawnDataLabelsIndexes[i].push(j)
     }
+
+    return dataLabelText
   }
 
   addBackgroundToDataLabel(el, coords) {
@@ -300,7 +338,7 @@ class DataLabels {
       width + paddingH * 2,
       height + paddingV,
       bCnf.borderRadius,
-      w.config.chart.background === 'transparent'
+      w.config.chart.background === 'transparent' || !w.config.chart.background
         ? '#fff'
         : w.config.chart.background,
       bCnf.opacity,

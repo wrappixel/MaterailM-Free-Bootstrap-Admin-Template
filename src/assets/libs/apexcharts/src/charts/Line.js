@@ -6,9 +6,9 @@ import Markers from '../modules/Markers'
 import Scatter from './Scatter'
 import Utils from '../utils/Utils'
 import Helpers from './common/line/Helpers'
-
+import { svgPath, spline } from '../libs/monotone-cubic'
 /**
- * ApexCharts Line Class responsible for drawing Line / Area Charts.
+ * ApexCharts Line Class responsible for drawing Line / Area / RangeArea Charts.
  * This class is also responsible for generating values for Bubble/Scatter charts, so need to rename it to Axis Charts to avoid confusions
  * @module Line
  **/
@@ -38,12 +38,12 @@ class Line {
     this.yaxisIndex = 0
   }
 
-  draw(series, ptype, seriesIndex) {
+  draw(series, ctype, seriesIndex, seriesRangeEnd) {
     let w = this.w
     let graphics = new Graphics(this.ctx)
-    let type = w.globals.comboCharts ? ptype : w.config.chart.type
+    let type = w.globals.comboCharts ? ctype : w.config.chart.type
     let ret = graphics.group({
-      class: `apexcharts-${type}-series apexcharts-plot-series`
+      class: `apexcharts-${type}-series apexcharts-plot-series`,
     })
 
     const coreUtils = new CoreUtils(this.ctx, w)
@@ -54,18 +54,23 @@ class Line {
 
     series = coreUtils.getLogSeries(series)
     this.yRatio = coreUtils.getLogYRatios(this.yRatio)
+    // We call draw() for each series group
+    this.prevSeriesY = []
 
-    // push all series in an array, so we can draw in reverse order (for stacked charts)
+    // push all series in an array, so we can draw in reverse order
+    // (for stacked charts)
     let allSeries = []
 
     for (let i = 0; i < series.length; i++) {
       series = this.lineHelpers.sameValueSeriesFix(i, series)
 
       let realIndex = w.globals.comboCharts ? seriesIndex[i] : i
+      let translationsIndex = this.yRatio.length > 1 ? realIndex : 0
 
       this._initSerieVariables(series, i, realIndex)
 
       let yArrj = [] // hold y values of current iterating series
+      let y2Arrj = [] // holds y2 values in range-area charts
       let xArrj = [] // hold x values of current iterating series
 
       let x = w.globals.padHorizontal + this.categoryAxisCorrection
@@ -84,33 +89,68 @@ class Line {
 
       let pX = x
       let pY
+      let pY2
       let prevX = pX
       let prevY = this.zeroY
+      let prevY2 = this.zeroY
       let lineYPosition = 0
 
       // the first value in the current series is not null or undefined
       let firstPrevY = this.lineHelpers.determineFirstPrevY({
         i,
+        realIndex,
         series,
         prevY,
-        lineYPosition
+        lineYPosition,
+        translationsIndex,
       })
       prevY = firstPrevY.prevY
-
-      yArrj.push(prevY)
+      if (w.config.stroke.curve === 'monotoneCubic' && series[i][0] === null) {
+        // we have to discard the y position if 1st dataPoint is null as it
+        // causes issues with monotoneCubic path creation
+        yArrj.push(null)
+      } else {
+        yArrj.push(prevY)
+      }
       pY = prevY
 
+      // y2 are needed for range-area charts
+      let firstPrevY2
+
+      if (type === 'rangeArea') {
+        firstPrevY2 = this.lineHelpers.determineFirstPrevY({
+          i,
+          realIndex,
+          series: seriesRangeEnd,
+          prevY: prevY2,
+          lineYPosition,
+          translationsIndex,
+        })
+        prevY2 = firstPrevY2.prevY
+        pY2 = prevY2
+        y2Arrj.push(yArrj[0] !== null ? prevY2 : null)
+      }
+
       let pathsFrom = this._calculatePathsFrom({
+        type,
         series,
         i,
         realIndex,
+        translationsIndex,
         prevX,
-        prevY
+        prevY,
+        prevY2,
       })
 
-      let paths = this._iterateOverDataPoints({
+      // RangeArea will resume with these for the upper path creation
+      let rYArrj = [yArrj[0]]
+      let rY2Arrj = [y2Arrj[0]]
+
+      const iteratingOpts = {
+        type,
         series,
         realIndex,
+        translationsIndex,
         i,
         x,
         y,
@@ -122,8 +162,55 @@ class Line {
         seriesIndex,
         lineYPosition,
         xArrj,
-        yArrj
+        yArrj,
+        y2Arrj,
+        seriesRangeEnd,
+      }
+
+      let paths = this._iterateOverDataPoints({
+        ...iteratingOpts,
+        iterations: type === 'rangeArea' ? series[i].length - 1 : undefined,
+        isRangeStart: true,
       })
+
+      if (type === 'rangeArea') {
+        let pathsFrom2 = this._calculatePathsFrom({
+          series: seriesRangeEnd,
+          i,
+          realIndex,
+          prevX,
+          prevY: prevY2,
+        })
+        let rangePaths = this._iterateOverDataPoints({
+          ...iteratingOpts,
+          series: seriesRangeEnd,
+          xArrj: [x],
+          yArrj: rYArrj,
+          y2Arrj: rY2Arrj,
+          pY: pY2,
+          areaPaths: paths.areaPaths,
+          pathsFrom: pathsFrom2,
+          iterations: seriesRangeEnd[i].length - 1,
+          isRangeStart: false,
+        })
+
+        // Path may be segmented by nulls in data.
+        // paths.linePaths should hold (segments * 2) paths (upper and lower)
+        // the first n segments belong to the lower and the last n segments
+        // belong to the upper.
+        // paths.linePaths and rangePaths.linepaths are actually equivalent
+        // but we retain the distinction below for consistency with the
+        // unsegmented paths conditional branch.
+        let segments = paths.linePaths.length / 2
+        for (let s = 0; s < segments; s++) {
+          paths.linePaths[s] =
+            rangePaths.linePaths[s + segments] + paths.linePaths[s]
+        }
+        paths.linePaths.splice(segments)
+        paths.pathFromLine = rangePaths.pathFromLine + paths.pathFromLine
+      } else {
+        paths.pathFromArea += 'z'
+      }
 
       this._handlePaths({ type, realIndex, i, paths })
 
@@ -133,9 +220,17 @@ class Line {
       allSeries.push(this.elSeries)
     }
 
+    if (typeof w.config.series[0]?.zIndex !== 'undefined') {
+      allSeries.sort(
+        (a, b) =>
+          Number(a.node.getAttribute('zIndex')) -
+          Number(b.node.getAttribute('zIndex'))
+      )
+    }
+
     if (w.config.chart.stacked) {
-      for (let s = allSeries.length; s > 0; s--) {
-        ret.add(allSeries[s - 1])
+      for (let s = allSeries.length - 1; s >= 0; s--) {
+        ret.add(allSeries[s])
       }
     } else {
       for (let s = 0; s < allSeries.length; s++) {
@@ -159,8 +254,10 @@ class Line {
       ? w.config.stroke.width[realIndex]
       : w.config.stroke.width
 
+    let translationsIndex = 0
     if (this.yRatio.length > 1) {
-      this.yaxisIndex = realIndex
+      this.yaxisIndex = w.globals.seriesYAxisReverseMap[realIndex]
+      translationsIndex = realIndex
     }
 
     this.isReversed =
@@ -170,9 +267,9 @@ class Line {
     // zeroY is the 0 value in y series which can be used in negative charts
     this.zeroY =
       w.globals.gridHeight -
-      this.baseLineY[this.yaxisIndex] -
+      this.baseLineY[translationsIndex] -
       (this.isReversed ? w.globals.gridHeight : 0) +
-      (this.isReversed ? this.baseLineY[this.yaxisIndex] * 2 : 0)
+      (this.isReversed ? this.baseLineY[translationsIndex] * 2 : 0)
 
     this.areaBottomY = this.zeroY
     if (
@@ -187,32 +284,45 @@ class Line {
     // el to which series will be drawn
     this.elSeries = graphics.group({
       class: `apexcharts-series`,
-      seriesName: Utils.escapeString(w.globals.seriesNames[realIndex])
+      zIndex:
+        typeof w.config.series[realIndex].zIndex !== 'undefined'
+          ? w.config.series[realIndex].zIndex
+          : realIndex,
+      seriesName: Utils.escapeString(w.globals.seriesNames[realIndex]),
     })
 
     // points
     this.elPointsMain = graphics.group({
       class: 'apexcharts-series-markers-wrap',
-      'data:realIndex': realIndex
+      'data:realIndex': realIndex,
     })
 
     // eldatalabels
     this.elDataLabelsWrap = graphics.group({
       class: 'apexcharts-datalabels',
-      'data:realIndex': realIndex
+      'data:realIndex': realIndex,
     })
 
     let longestSeries = series[i].length === w.globals.dataPoints
     this.elSeries.attr({
       'data:longestSeries': longestSeries,
       rel: i + 1,
-      'data:realIndex': realIndex
+      'data:realIndex': realIndex,
     })
 
     this.appendPathFrom = true
   }
 
-  _calculatePathsFrom({ series, i, realIndex, prevX, prevY }) {
+  _calculatePathsFrom({
+    type,
+    series,
+    i,
+    realIndex,
+    translationsIndex,
+    prevX,
+    prevY,
+    prevY2,
+  }) {
     const w = this.w
     const graphics = new Graphics(this.ctx)
     let linePath, areaPath, pathFromLine, pathFromArea
@@ -222,7 +332,7 @@ class Line {
       for (let s = 0; s < series[i].length; s++) {
         if (series[i][s] !== null) {
           prevX = this.xDivision * s
-          prevY = this.zeroY - series[i][s] / this.yRatio[this.yaxisIndex]
+          prevY = this.zeroY - series[i][s] / this.yRatio[translationsIndex]
           linePath = graphics.move(prevX, prevY)
           areaPath = graphics.move(prevX, this.areaBottomY)
           break
@@ -230,18 +340,22 @@ class Line {
       }
     } else {
       linePath = graphics.move(prevX, prevY)
+
+      if (type === 'rangeArea') {
+        linePath = graphics.move(prevX, prevY2) + graphics.line(prevX, prevY)
+      }
       areaPath =
         graphics.move(prevX, this.areaBottomY) + graphics.line(prevX, prevY)
     }
 
-    pathFromLine = graphics.move(-1, this.zeroY) + graphics.line(-1, this.zeroY)
-    pathFromArea = graphics.move(-1, this.zeroY) + graphics.line(-1, this.zeroY)
+    pathFromLine = graphics.move(0, this.zeroY) + graphics.line(0, this.zeroY)
+    pathFromArea = graphics.move(0, this.zeroY) + graphics.line(0, this.zeroY)
 
     if (w.globals.previousPaths.length > 0) {
       const pathFrom = this.lineHelpers.checkPreviousPaths({
         pathFromLine,
         pathFromArea,
-        realIndex
+        realIndex,
       })
       pathFromLine = pathFrom.pathFromLine
       pathFromArea = pathFrom.pathFromArea
@@ -253,7 +367,7 @@ class Line {
       linePath,
       areaPath,
       pathFromLine,
-      pathFromArea
+      pathFromArea,
     }
   }
 
@@ -270,7 +384,7 @@ class Line {
     w.globals.seriesYvalues[realIndex] = paths.yArrj
 
     const forecast = w.config.forecastDataPoints
-    if (forecast.count > 0) {
+    if (forecast.count > 0 && type !== 'rangeArea') {
       const forecastCutoff =
         w.globals.seriesXvalues[realIndex][
           w.globals.seriesXvalues[realIndex].length - forecast.count - 1
@@ -298,7 +412,7 @@ class Line {
     if (!this.pointsChart) {
       w.globals.delayedElements.push({
         el: this.elPointsMain.node,
-        index: realIndex
+        index: realIndex,
       })
     }
 
@@ -308,12 +422,12 @@ class Line {
       animationDelay: i,
       initialSpeed: w.config.chart.animations.speed,
       dataChangeSpeed: w.config.chart.animations.dynamicAnimation.speed,
-      className: `apexcharts-${type}`
+      className: `apexcharts-${type}`,
     }
 
     if (type === 'area') {
       let pathFill = fill.fillPath({
-        seriesNumber: realIndex
+        seriesNumber: realIndex,
       })
 
       for (let p = 0; p < paths.areaPaths.length; p++) {
@@ -324,7 +438,7 @@ class Line {
           stroke: 'none',
           strokeWidth: 0,
           strokeLineCap: null,
-          fill: pathFill
+          fill: pathFill,
         })
 
         this.elSeries.add(renderedPath)
@@ -336,7 +450,7 @@ class Line {
       if (type === 'line') {
         lineFill = fill.fillPath({
           seriesNumber: realIndex,
-          i
+          i,
         })
       } else {
         if (w.config.stroke.fill.type === 'solid') {
@@ -347,13 +461,20 @@ class Line {
 
           lineFill = fill.fillPath({
             seriesNumber: realIndex,
-            i
+            i,
           })
           w.config.fill = prevFill
         }
       }
 
+      // range-area paths are drawn using linePaths
       for (let p = 0; p < paths.linePaths.length; p++) {
+        let pathFill = lineFill
+        if (type === 'rangeArea') {
+          pathFill = fill.fillPath({
+            seriesNumber: realIndex,
+          })
+        }
         const linePathCommonOpts = {
           ...defaultRenderedPathOptions,
           pathFrom: paths.pathFromLine,
@@ -361,12 +482,13 @@ class Line {
           stroke: lineFill,
           strokeWidth: this.strokeWidth,
           strokeLineCap: w.config.stroke.lineCap,
-          fill: 'none'
+          fill: type === 'rangeArea' ? pathFill : 'none',
         }
         let renderedPath = graphics.renderPaths(linePathCommonOpts)
         this.elSeries.add(renderedPath)
+        renderedPath.attr('fill-rule', `evenodd`)
 
-        if (forecast.count > 0) {
+        if (forecast.count > 0 && type !== 'rangeArea') {
           let renderedForecastPath = graphics.renderPaths(linePathCommonOpts)
 
           renderedForecastPath.node.setAttribute(
@@ -396,8 +518,11 @@ class Line {
   }
 
   _iterateOverDataPoints({
+    type,
     series,
+    iterations,
     realIndex,
+    translationsIndex,
     i,
     x,
     y,
@@ -409,7 +534,10 @@ class Line {
     seriesIndex,
     lineYPosition,
     xArrj,
-    yArrj
+    yArrj,
+    y2Arrj,
+    isRangeStart,
+    seriesRangeEnd,
   }) {
     const w = this.w
     let graphics = new Graphics(this.ctx)
@@ -420,8 +548,42 @@ class Line {
       ? w.globals.minYArr[realIndex]
       : w.globals.minY
 
-    const iterations =
-      w.globals.dataPoints > 1 ? w.globals.dataPoints - 1 : w.globals.dataPoints
+    if (!iterations) {
+      iterations =
+        w.globals.dataPoints > 1
+          ? w.globals.dataPoints - 1
+          : w.globals.dataPoints
+    }
+
+    const getY = (_y, lineYPos) => {
+      return (
+        lineYPos -
+        _y / yRatio[translationsIndex] +
+        (this.isReversed ? _y / yRatio[translationsIndex] : 0) * 2
+      )
+    }
+
+    let y2 = y
+
+    let stackSeries =
+      (w.config.chart.stacked && !w.globals.comboCharts) ||
+      (w.config.chart.stacked &&
+        w.globals.comboCharts &&
+        (!this.w.config.chart.stackOnlyBar ||
+          this.w.config.series[realIndex]?.type === 'bar' ||
+          this.w.config.series[realIndex]?.type === 'column'))
+
+    let curve = w.config.stroke.curve
+    if (Array.isArray(curve)) {
+      if (Array.isArray(seriesIndex)) {
+        curve = curve[seriesIndex[i]]
+      } else {
+        curve = curve[i]
+      }
+    }
+
+    let pathState = 0
+    let segmentStartX
 
     for (let j = 0; j < iterations; j++) {
       const isNull =
@@ -438,22 +600,27 @@ class Line {
         x = x + this.xDivision
       }
 
-      if (w.config.chart.stacked) {
+      if (stackSeries) {
         if (
           i > 0 &&
           w.globals.collapsedSeries.length < w.config.series.length - 1
         ) {
-          // a collapsed series in a stacked bar chart may provide wrong result for the next series, hence find the prevIndex of prev series which is not collapsed - fixes apexcharts.js#1372
+          // a collapsed series in a stacked chart may provide wrong result
+          // for the next series, hence find the prevIndex of prev series
+          // which is not collapsed - fixes apexcharts.js#1372
           const prevIndex = (pi) => {
-            let pii = pi
-            for (let cpi = 0; cpi < w.globals.series.length; cpi++) {
-              if (w.globals.collapsedSeriesIndices.indexOf(pi) > -1) {
+            for (let pii = pi; pii > 0; pii--) {
+              if (
+                w.globals.collapsedSeriesIndices.indexOf(
+                  seriesIndex?.[pii] || pii
+                ) > -1
+              ) {
                 pii--
-                break
+              } else {
+                return pii
               }
             }
-
-            return pii >= 0 ? pii : 0
+            return 0
           }
           lineYPosition = this.prevSeriesY[prevIndex(i - 1)][j + 1]
         } else {
@@ -465,22 +632,30 @@ class Line {
       }
 
       if (isNull) {
-        y =
-          lineYPosition -
-          minY / yRatio[this.yaxisIndex] +
-          (this.isReversed ? minY / yRatio[this.yaxisIndex] : 0) * 2
+        y = getY(minY, lineYPosition)
       } else {
-        y =
-          lineYPosition -
-          series[i][j + 1] / yRatio[this.yaxisIndex] +
-          (this.isReversed ? series[i][j + 1] / yRatio[this.yaxisIndex] : 0) * 2
+        y = getY(series[i][j + 1], lineYPosition)
+
+        if (type === 'rangeArea') {
+          y2 = getY(seriesRangeEnd[i][j + 1], lineYPosition)
+        }
       }
 
       // push current X
       xArrj.push(x)
 
       // push current Y that will be used as next series's bottom position
-      yArrj.push(y)
+      if (
+        isNull &&
+        (w.config.stroke.curve === 'smooth' ||
+          w.config.stroke.curve === 'monotoneCubic')
+      ) {
+        yArrj.push(null)
+        y2Arrj.push(null)
+      } else {
+        yArrj.push(y)
+        y2Arrj.push(y2)
+      }
 
       let pointsPos = this.lineHelpers.calculatePoints({
         series,
@@ -489,48 +664,59 @@ class Line {
         realIndex,
         i,
         j,
-        prevY
+        prevY,
       })
 
       let calculatedPaths = this._createPaths({
+        type,
         series,
         i,
         realIndex,
         j,
         x,
         y,
+        y2,
+        xArrj,
+        yArrj,
+        y2Arrj,
         pX,
         pY,
+        pathState,
+        segmentStartX,
         linePath,
         areaPath,
         linePaths,
         areaPaths,
-        seriesIndex
+        curve,
+        isRangeStart,
       })
 
       areaPaths = calculatedPaths.areaPaths
       linePaths = calculatedPaths.linePaths
       pX = calculatedPaths.pX
       pY = calculatedPaths.pY
+      pathState = calculatedPaths.pathState
+      segmentStartX = calculatedPaths.segmentStartX
       areaPath = calculatedPaths.areaPath
       linePath = calculatedPaths.linePath
 
-      if (this.appendPathFrom) {
-        pathFromLine = pathFromLine + graphics.line(x, this.zeroY)
-        pathFromArea = pathFromArea + graphics.line(x, this.zeroY)
+      if (
+        this.appendPathFrom &&
+        !(curve === 'monotoneCubic' && type === 'rangeArea')
+      ) {
+        pathFromLine += graphics.line(x, this.zeroY)
+        pathFromArea += graphics.line(x, this.zeroY)
       }
 
       this.handleNullDataPoints(series, pointsPos, i, j, realIndex)
 
       this._handleMarkersAndLabels({
+        type,
         pointsPos,
-        series,
-        x,
-        y,
-        prevY,
         i,
         j,
-        realIndex
+        realIndex,
+        isRangeStart,
       })
     }
 
@@ -540,11 +726,13 @@ class Line {
       pathFromArea,
       areaPaths,
       pathFromLine,
-      linePaths
+      linePaths,
+      linePath,
+      areaPath,
     }
   }
 
-  _handleMarkersAndLabels({ pointsPos, series, x, y, prevY, i, j, realIndex }) {
+  _handleMarkersAndLabels({ type, pointsPos, isRangeStart, i, j, realIndex }) {
     const w = this.w
     let dataLabels = new DataLabels(this.ctx)
 
@@ -567,131 +755,348 @@ class Line {
         realIndex,
         pointsPos,
         zRatio: this.zRatio,
-        elParent: this.elPointsMain
+        elParent: this.elPointsMain,
       })
     }
 
-    let drawnLabels = dataLabels.drawDataLabel(
-      pointsPos,
-      realIndex,
-      j + 1,
-      null
-    )
+    let drawnLabels = dataLabels.drawDataLabel({
+      type,
+      isRangeStart,
+      pos: pointsPos,
+      i: realIndex,
+      j: j + 1,
+    })
     if (drawnLabels !== null) {
       this.elDataLabelsWrap.add(drawnLabels)
     }
   }
 
   _createPaths({
+    type,
     series,
     i,
     realIndex,
     j,
     x,
     y,
+    xArrj,
+    yArrj,
+    y2,
+    y2Arrj,
     pX,
     pY,
+    pathState,
+    segmentStartX,
     linePath,
     areaPath,
     linePaths,
     areaPaths,
-    seriesIndex
+    curve,
+    isRangeStart,
   }) {
-    let w = this.w
     let graphics = new Graphics(this.ctx)
-
-    let curve = w.config.stroke.curve
     const areaBottomY = this.areaBottomY
+    let rangeArea = type === 'rangeArea'
+    let isLowerRangeAreaPath = type === 'rangeArea' && isRangeStart
 
-    if (Array.isArray(w.config.stroke.curve)) {
-      if (Array.isArray(seriesIndex)) {
-        curve = w.config.stroke.curve[seriesIndex[i]]
-      } else {
-        curve = w.config.stroke.curve[i]
-      }
-    }
+    switch (curve) {
+      case 'monotoneCubic':
+        let yAj = isRangeStart ? yArrj : y2Arrj
+        let getSmoothInputs = (xArr, yArr) => {
+          return xArr
+            .map((_, i) => {
+              return [_, yArr[i]]
+            })
+            .filter((_) => _[1] !== null)
+        }
+        let getSegmentLengths = (yArr) => {
+          // Get the segment lengths so the segments can be extracted from
+          // the null-filtered smoothInputs array
+          let segLens = []
+          let count = 0
+          yArr.forEach((_) => {
+            if (_ !== null) {
+              count++
+            } else if (count > 0) {
+              segLens.push(count)
+              count = 0
+            }
+          })
+          if (count > 0) {
+            segLens.push(count)
+          }
+          return segLens
+        }
+        let getSegments = (yArr, points) => {
+          let segLens = getSegmentLengths(yArr)
+          let segments = []
+          for (let i = 0, len = 0; i < segLens.length; len += segLens[i++]) {
+            segments[i] = spline.slice(points, len, len + segLens[i])
+          }
+          return segments
+        }
 
-    // logic of smooth curve derived from chartist
-    // CREDITS: https://gionkunz.github.io/chartist-js/
-    if (curve === 'smooth') {
-      let length = (x - pX) * 0.35
-      if (w.globals.hasNullValues) {
-        if (series[i][j] !== null) {
-          if (series[i][j + 1] !== null) {
-            linePath =
-              graphics.move(pX, pY) +
-              graphics.curve(pX + length, pY, x - length, y, x + 1, y)
-            areaPath =
-              graphics.move(pX + 1, pY) +
-              graphics.curve(pX + length, pY, x - length, y, x + 1, y) +
-              graphics.line(x, areaBottomY) +
-              graphics.line(pX, areaBottomY) +
-              'z'
-          } else {
-            linePath = graphics.move(pX, pY)
-            areaPath = graphics.move(pX, pY) + 'z'
+        switch (pathState) {
+          case 0:
+            // Find start of segment
+            if (yAj[j + 1] === null) {
+              break
+            }
+            pathState = 1
+          // continue through to pathState 1
+          case 1:
+            if (
+              !(rangeArea
+                ? xArrj.length === series[i].length
+                : j === series[i].length - 2)
+            ) {
+              break
+            }
+          // continue through to pathState 2
+          case 2:
+            // Interpolate the full series with nulls excluded then extract the
+            // null delimited segments with interpolated points included.
+            const _xAj = isRangeStart ? xArrj : xArrj.slice().reverse()
+            const _yAj = isRangeStart ? yAj : yAj.slice().reverse()
+
+            const smoothInputs = getSmoothInputs(_xAj, _yAj)
+            const points =
+              smoothInputs.length > 1
+                ? spline.points(smoothInputs)
+                : smoothInputs
+
+            let smoothInputsLower = []
+            if (rangeArea) {
+              if (isLowerRangeAreaPath) {
+                // As we won't be needing it, borrow areaPaths to retain our
+                // rangeArea lower points.
+                areaPaths = smoothInputs
+              } else {
+                // Retrieve the corresponding lower raw interpolated points so we
+                // can join onto its end points. Note: the upper Y2 segments will
+                // be in the reverse order relative to the lower segments.
+                smoothInputsLower = areaPaths.reverse()
+              }
+            }
+
+            let segmentCount = 0
+            let smoothInputsIndex = 0
+            getSegments(_yAj, points).forEach((_) => {
+              segmentCount++
+              let svgPoints = svgPath(_)
+              let _start = smoothInputsIndex
+              smoothInputsIndex += _.length
+              let _end = smoothInputsIndex - 1
+              if (isLowerRangeAreaPath) {
+                linePath =
+                  graphics.move(
+                    smoothInputs[_start][0],
+                    smoothInputs[_start][1]
+                  ) + svgPoints
+              } else if (rangeArea) {
+                linePath =
+                  graphics.move(
+                    smoothInputsLower[_start][0],
+                    smoothInputsLower[_start][1]
+                  ) +
+                  graphics.line(
+                    smoothInputs[_start][0],
+                    smoothInputs[_start][1]
+                  ) +
+                  svgPoints +
+                  graphics.line(
+                    smoothInputsLower[_end][0],
+                    smoothInputsLower[_end][1]
+                  )
+              } else {
+                linePath =
+                  graphics.move(
+                    smoothInputs[_start][0],
+                    smoothInputs[_start][1]
+                  ) + svgPoints
+                areaPath =
+                  linePath +
+                  graphics.line(smoothInputs[_end][0], areaBottomY) +
+                  graphics.line(smoothInputs[_start][0], areaBottomY) +
+                  'z'
+                areaPaths.push(areaPath)
+              }
+              linePaths.push(linePath)
+            })
+
+            if (rangeArea && segmentCount > 1 && !isLowerRangeAreaPath) {
+              // Reverse the order of the upper path segments
+              let upperLinePaths = linePaths.slice(segmentCount).reverse()
+              linePaths.splice(segmentCount)
+              upperLinePaths.forEach((u) => linePaths.push(u))
+            }
+            pathState = 0
+            break
+        }
+        break
+      case 'smooth':
+        let length = (x - pX) * 0.35
+        if (series[i][j] === null) {
+          pathState = 0
+        } else {
+          switch (pathState) {
+            case 0:
+              // Beginning of segment
+              segmentStartX = pX
+              if (isLowerRangeAreaPath) {
+                // Need to add path portion that will join to the upper path
+                linePath = graphics.move(pX, y2Arrj[j]) + graphics.line(pX, pY)
+              } else {
+                linePath = graphics.move(pX, pY)
+              }
+              areaPath = graphics.move(pX, pY)
+
+              // Check for single isolated point
+              if (series[i][j + 1] === null) {
+                linePaths.push(linePath)
+                areaPaths.push(areaPath)
+                // Stay in pathState = 0;
+                break
+              }
+              pathState = 1
+              if (j < series[i].length - 2) {
+                let p = graphics.curve(pX + length, pY, x - length, y, x, y)
+                linePath += p
+                areaPath += p
+                break
+              }
+            // Continue on with pathState 1 to finish the path and exit
+            case 1:
+              // Continuing with segment
+              if (series[i][j + 1] === null) {
+                // Segment ends here
+                if (isLowerRangeAreaPath) {
+                  linePath += graphics.line(pX, y2)
+                } else {
+                  linePath += graphics.move(pX, pY)
+                }
+                areaPath +=
+                  graphics.line(pX, areaBottomY) +
+                  graphics.line(segmentStartX, areaBottomY) +
+                  'z'
+                linePaths.push(linePath)
+                areaPaths.push(areaPath)
+                pathState = -1
+              } else {
+                let p = graphics.curve(pX + length, pY, x - length, y, x, y)
+                linePath += p
+                areaPath += p
+                if (j >= series[i].length - 2) {
+                  if (isLowerRangeAreaPath) {
+                    // Need to add path portion that will join to the upper path
+                    linePath +=
+                      graphics.curve(x, y, x, y, x, y2) + graphics.move(x, y2)
+                  }
+                  areaPath +=
+                    graphics.curve(x, y, x, y, x, areaBottomY) +
+                    graphics.line(segmentStartX, areaBottomY) +
+                    'z'
+                  linePaths.push(linePath)
+                  areaPaths.push(areaPath)
+                  pathState = -1
+                }
+              }
+              break
           }
         }
 
-        linePaths.push(linePath)
-        areaPaths.push(areaPath)
-      } else {
-        linePath =
-          linePath + graphics.curve(pX + length, pY, x - length, y, x, y)
-        areaPath =
-          areaPath + graphics.curve(pX + length, pY, x - length, y, x, y)
-      }
+        pX = x
+        pY = y
 
-      pX = x
-      pY = y
-
-      if (j === series[i].length - 2) {
-        // last loop, close path
-        areaPath =
-          areaPath +
-          graphics.curve(pX, pY, x, y, x, areaBottomY) +
-          graphics.move(x, y) +
-          'z'
-        if (!w.globals.hasNullValues) {
-          linePaths.push(linePath)
-          areaPaths.push(areaPath)
+        break
+      default:
+        let pathToPoint = (curve, x, y) => {
+          let path = []
+          switch (curve) {
+            case 'stepline':
+              path = graphics.line(x, null, 'H') + graphics.line(null, y, 'V')
+              break
+            case 'linestep':
+              path = graphics.line(null, y, 'V') + graphics.line(x, null, 'H')
+              break
+            case 'straight':
+              path = graphics.line(x, y)
+              break
+          }
+          return path
         }
-      }
-    } else {
-      if (series[i][j + 1] === null) {
-        linePath = linePath + graphics.move(x, y)
+        if (series[i][j] === null) {
+          pathState = 0
+        } else {
+          switch (pathState) {
+            case 0:
+              // Beginning of segment
+              segmentStartX = pX
+              if (isLowerRangeAreaPath) {
+                // Need to add path portion that will join to the upper path
+                linePath = graphics.move(pX, y2Arrj[j]) + graphics.line(pX, pY)
+              } else {
+                linePath = graphics.move(pX, pY)
+              }
+              areaPath = graphics.move(pX, pY)
 
-        const numericOrCatX = w.globals.isXNumeric
-          ? (w.globals.seriesX[realIndex][j] - w.globals.minX) / this.xRatio
-          : x - this.xDivision
-        areaPath =
-          areaPath +
-          graphics.line(numericOrCatX, areaBottomY) +
-          graphics.move(x, y) +
-          'z'
-      }
-      if (series[i][j] === null) {
-        linePath = linePath + graphics.move(x, y)
-        areaPath = areaPath + graphics.move(x, areaBottomY)
-      }
+              // Check for single isolated point
+              if (series[i][j + 1] === null) {
+                linePaths.push(linePath)
+                areaPaths.push(areaPath)
+                // Stay in pathState = 0
+                break
+              }
+              pathState = 1
+              if (j < series[i].length - 2) {
+                let p = pathToPoint(curve, x, y)
+                linePath += p
+                areaPath += p
+                break
+              }
+            // Continue on with pathState 1 to finish the path and exit
+            case 1:
+              // Continuing with segment
+              if (series[i][j + 1] === null) {
+                // Segment ends here
+                if (isLowerRangeAreaPath) {
+                  linePath += graphics.line(pX, y2)
+                } else {
+                  linePath += graphics.move(pX, pY)
+                }
+                areaPath +=
+                  graphics.line(pX, areaBottomY) +
+                  graphics.line(segmentStartX, areaBottomY) +
+                  'z'
+                linePaths.push(linePath)
+                areaPaths.push(areaPath)
+                pathState = -1
+              } else {
+                let p = pathToPoint(curve, x, y)
+                linePath += p
+                areaPath += p
+                if (j >= series[i].length - 2) {
+                  if (isLowerRangeAreaPath) {
+                    // Need to add path portion that will join to the upper path
+                    linePath += graphics.line(x, y2)
+                  }
+                  areaPath +=
+                    graphics.line(x, areaBottomY) +
+                    graphics.line(segmentStartX, areaBottomY) +
+                    'z'
+                  linePaths.push(linePath)
+                  areaPaths.push(areaPath)
+                  pathState = -1
+                }
+              }
+              break
+          }
+        }
 
-      if (curve === 'stepline') {
-        linePath =
-          linePath + graphics.line(x, null, 'H') + graphics.line(null, y, 'V')
-        areaPath =
-          areaPath + graphics.line(x, null, 'H') + graphics.line(null, y, 'V')
-      } else if (curve === 'straight') {
-        linePath = linePath + graphics.line(x, y)
-        areaPath = areaPath + graphics.line(x, y)
-      }
+        pX = x
+        pY = y
 
-      if (j === series[i].length - 2) {
-        // last loop, close path
-        areaPath =
-          areaPath + graphics.line(x, areaBottomY) + graphics.move(x, y) + 'z'
-        linePaths.push(linePath)
-        areaPaths.push(areaPath)
-      }
+        break
     }
 
     return {
@@ -699,8 +1104,10 @@ class Line {
       areaPaths,
       pX,
       pY,
+      pathState,
+      segmentStartX,
       linePath,
-      areaPath
+      areaPath,
     }
   }
 
@@ -710,12 +1117,16 @@ class Line {
       (series[i][j] === null && w.config.markers.showNullDataPoints) ||
       series[i].length === 1
     ) {
+      let pSize = this.strokeWidth - w.config.markers.strokeWidth / 2
+      if (!(pSize > 0)) {
+        pSize = 0
+      }
       // fixes apexcharts.js#1282, #1252
       let elPointsWrap = this.markers.plotChartMarkers(
         pointsPos,
         realIndex,
         j + 1,
-        this.strokeWidth - w.config.markers.strokeWidth / 2,
+        pSize,
         true
       )
       if (elPointsWrap !== null) {

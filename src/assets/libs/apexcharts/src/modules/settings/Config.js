@@ -19,21 +19,6 @@ export default class Config {
 
     this.chartType = opts.chart.type
 
-    if (this.chartType === 'histogram') {
-      // technically, a histogram can be drawn by a column chart with no spaces in between
-      opts.chart.type = 'bar'
-      opts = Utils.extend(
-        {
-          plotOptions: {
-            bar: {
-              columnWidth: '99.99%'
-            }
-          }
-        },
-        opts
-      )
-    }
-
     opts = this.extendYAxis(opts)
     opts = this.extendAnnotations(opts)
 
@@ -48,7 +33,7 @@ export default class Config {
         'candlestick',
         'boxPlot',
         'rangeBar',
-        'histogram',
+        'rangeArea',
         'bubble',
         'scatter',
         'heatmap',
@@ -57,7 +42,7 @@ export default class Config {
         'polarArea',
         'donut',
         'radar',
-        'radialBar'
+        'radialBar',
       ]
 
       if (chartTypes.indexOf(opts.chart.type) !== -1) {
@@ -66,12 +51,28 @@ export default class Config {
         chartDefaults = defaults.line()
       }
 
-      if (opts.chart.brush && opts.chart.brush.enabled) {
+      if (opts.plotOptions?.bar?.isFunnel) {
+        chartDefaults = defaults.funnel()
+      }
+
+      if (opts.chart.stacked && opts.chart.type === 'bar') {
+        chartDefaults = defaults.stackedBars()
+      }
+
+      if (opts.chart.brush?.enabled) {
         chartDefaults = defaults.brush(chartDefaults)
+      }
+
+      if (opts.plotOptions?.line?.isSlopeChart) {
+        chartDefaults = defaults.slope()
       }
 
       if (opts.chart.stacked && opts.chart.stackType === '100%') {
         opts = defaults.stacked100(opts)
+      }
+
+      if (opts.plotOptions?.bar?.isDumbbell) {
+        opts = defaults.dumbbell(opts)
       }
 
       // If user has specified a dark theme, make the tooltip dark too
@@ -89,10 +90,8 @@ export default class Config {
       opts = this.checkForCatToNumericXAxis(this.chartType, chartDefaults, opts)
 
       if (
-        (opts.chart.sparkline && opts.chart.sparkline.enabled) ||
-        (window.Apex.chart &&
-          window.Apex.chart.sparkline &&
-          window.Apex.chart.sparkline.enabled)
+        opts.chart.sparkline?.enabled ||
+        window.Apex.chart?.sparkline?.enabled
       ) {
         chartDefaults = defaults.sparkline(chartDefaults)
       }
@@ -119,9 +118,7 @@ export default class Config {
 
     const isBarHorizontal =
       (chartType === 'bar' || chartType === 'boxPlot') &&
-      opts.plotOptions &&
-      opts.plotOptions.bar &&
-      opts.plotOptions.bar.horizontal
+      opts.plotOptions?.bar?.horizontal
 
     const unsupportedZoom =
       chartType === 'pie' ||
@@ -210,7 +207,7 @@ export default class Config {
 
     if (isLogY && series.length > 1 && series.length !== opts.yaxis.length) {
       console.warn(
-        'A multi-series logarithmic chart should have equal number of series and y-axes. Please make sure to equalize both.'
+        'A multi-series logarithmic chart should have equal number of series and y-axes'
       )
     }
     return opts
@@ -278,10 +275,6 @@ export default class Config {
 
       if (!opts.chart.foreColor) {
         opts.chart.foreColor = '#f6f7f8'
-      }
-
-      if (!opts.chart.background) {
-        opts.chart.background = '#424242'
       }
 
       if (!opts.theme.palette) {

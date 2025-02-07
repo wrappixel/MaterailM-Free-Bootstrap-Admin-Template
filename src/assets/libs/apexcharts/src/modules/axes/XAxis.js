@@ -8,8 +8,9 @@ import AxesUtils from './AxesUtils'
  **/
 
 export default class XAxis {
-  constructor(ctx) {
+  constructor(ctx, elgrid) {
     this.ctx = ctx
+    this.elgrid = elgrid
     this.w = ctx.w
 
     const w = this.w
@@ -30,7 +31,7 @@ export default class XAxis {
     if (w.config.xaxis.position === 'top') {
       this.offY = 0
     } else {
-      this.offY = w.globals.gridHeight + 1
+      this.offY = w.globals.gridHeight
     }
     this.offY = this.offY + w.config.xaxis.axisBorder.offsetY
     this.isCategoryBarHorizontal =
@@ -63,12 +64,12 @@ export default class XAxis {
 
     let elXaxis = graphics.group({
       class: 'apexcharts-xaxis',
-      transform: `translate(${w.config.xaxis.offsetX}, ${w.config.xaxis.offsetY})`
+      transform: `translate(${w.config.xaxis.offsetX}, ${w.config.xaxis.offsetY})`,
     })
 
     let elXaxisTexts = graphics.group({
       class: 'apexcharts-xaxis-texts-g',
-      transform: `translate(${w.globals.translateXAxisX}, ${w.globals.translateXAxisY})`
+      transform: `translate(${w.globals.translateXAxisX}, ${w.globals.translateXAxisY})`,
     })
 
     elXaxis.add(elXaxisTexts)
@@ -88,7 +89,7 @@ export default class XAxis {
       (i, colWidth) => colWidth
     )
 
-    if (w.globals.hasGroups) {
+    if (w.globals.hasXaxisGroups) {
       let labelsGroup = w.globals.groups
 
       labels = []
@@ -118,7 +119,7 @@ export default class XAxis {
 
     if (w.config.xaxis.title.text !== undefined) {
       let elXaxisTitle = graphics.group({
-        class: 'apexcharts-xaxis-title'
+        class: 'apexcharts-xaxis-title',
       })
 
       let elXAxisTitleText = graphics.drawText({
@@ -126,7 +127,9 @@ export default class XAxis {
         y:
           this.offY +
           parseFloat(this.xaxisFontSize) +
-          w.globals.xAxisLabelsHeight +
+          (w.config.xaxis.position === 'bottom'
+            ? w.globals.xAxisLabelsHeight
+            : -w.globals.xAxisLabelsHeight - 10) +
           w.config.xaxis.title.offsetY,
         text: w.config.xaxis.title.text,
         textAnchor: 'middle',
@@ -135,7 +138,7 @@ export default class XAxis {
         fontWeight: w.config.xaxis.title.style.fontWeight,
         foreColor: w.config.xaxis.title.style.color,
         cssClass:
-          'apexcharts-xaxis-title-text ' + w.config.xaxis.title.style.cssClass
+          'apexcharts-xaxis-title-text ' + w.config.xaxis.title.style.cssClass,
       })
 
       elXaxisTitle.add(elXAxisTitleText)
@@ -154,8 +157,11 @@ export default class XAxis {
         0,
         this.xaxisBorderHeight
       )
-
-      elXaxis.add(elHorzLine)
+      if (this.elgrid && this.elgrid.elGridBorders && w.config.grid.show) {
+        this.elgrid.elGridBorders.add(elHorzLine)
+      } else {
+        elXaxis.add(elHorzLine)
+      }
     }
 
     return elXaxis
@@ -199,9 +205,13 @@ export default class XAxis {
     let dataPoints =
       w.config.xaxis.type === 'category' ? w.globals.dataPoints : labelsLen
 
+    // when all series are collapsed, fixes #3381
+    if (dataPoints === 0 && labelsLen > dataPoints) dataPoints = labelsLen
+
     if (isXNumeric) {
       let len = dataPoints > 1 ? dataPoints - 1 : dataPoints
-      colWidth = w.globals.gridWidth / len
+      colWidth = w.globals.gridWidth / Math.min(len, labelsLen - 1)
+
       xPos = xPos + colWidthCb(0, colWidth) / 2 + w.config.xaxis.labels.offsetX
     } else {
       colWidth = w.globals.gridWidth / dataPoints
@@ -235,6 +245,10 @@ export default class XAxis {
         offsetYCorrection = 22
       }
 
+      if (w.config.xaxis.title.text && w.config.xaxis.position === 'top') {
+        offsetYCorrection += parseFloat(w.config.xaxis.title.style.fontSize) + 2
+      }
+
       if (!isLeafGroup) {
         offsetYCorrection =
           offsetYCorrection +
@@ -266,10 +280,6 @@ export default class XAxis {
           : xaxisForeColors[i]
       }
 
-      if (isLeafGroup && label.text) {
-        w.globals.xaxisLabelsCount++
-      }
-
       if (w.config.xaxis.labels.show) {
         let elText = graphics.drawText({
           x: label.x,
@@ -292,9 +302,19 @@ export default class XAxis {
           cssClass:
             (isLeafGroup
               ? 'apexcharts-xaxis-label '
-              : 'apexcharts-xaxis-group-label ') + cssClass
+              : 'apexcharts-xaxis-group-label ') + cssClass,
         })
         elXaxisTexts.add(elText)
+
+        elText.on('click', (e) => {
+          if (typeof w.config.chart.events.xAxisLabelClick === 'function') {
+            const opts = Object.assign({}, w, {
+              labelIndex: i,
+            })
+
+            w.config.chart.events.xAxisLabelClick(e, this.ctx, opts)
+          }
+        })
 
         if (isLeafGroup) {
           let elTooltipTitle = document.createElementNS(
@@ -328,12 +348,12 @@ export default class XAxis {
 
     let elYaxis = graphics.group({
       class: 'apexcharts-yaxis apexcharts-xaxis-inversed',
-      rel: realIndex
+      rel: realIndex,
     })
 
     let elYaxisTexts = graphics.group({
       class: 'apexcharts-yaxis-texts-g apexcharts-xaxis-inversed-texts-g',
-      transform: 'translate(' + translateYAxisX + ', 0)'
+      transform: 'translate(' + translateYAxisX + ', 0)',
     })
 
     elYaxis.add(elYaxisTexts)
@@ -364,7 +384,7 @@ export default class XAxis {
         label = lbFormatter(label, {
           seriesIndex: realIndex,
           dataPointIndex: i,
-          w
+          w,
         })
 
         const yColors = this.axesUtils.getYAxisForeColor(
@@ -379,20 +399,47 @@ export default class XAxis {
         if (Array.isArray(label)) {
           multiY = (label.length / 2) * parseInt(ylabels.style.fontSize, 10)
         }
+
+        let offsetX = ylabels.offsetX - 15
+        let textAnchor = 'end'
+        if (this.yaxis.opposite) {
+          textAnchor = 'start'
+        }
+        if (w.config.yaxis[0].labels.align === 'left') {
+          offsetX = ylabels.offsetX
+          textAnchor = 'start'
+        } else if (w.config.yaxis[0].labels.align === 'center') {
+          offsetX = ylabels.offsetX
+          textAnchor = 'middle'
+        } else if (w.config.yaxis[0].labels.align === 'right') {
+          textAnchor = 'end'
+        }
+
         let elLabel = graphics.drawText({
-          x: ylabels.offsetX - 15,
+          x: offsetX,
           y: yPos + colHeight + ylabels.offsetY - multiY,
           text: label,
-          textAnchor: this.yaxis.opposite ? 'start' : 'end',
+          textAnchor,
           foreColor: getForeColor(),
           fontSize: ylabels.style.fontSize,
           fontFamily: ylabels.style.fontFamily,
           fontWeight: ylabels.style.fontWeight,
           isPlainText: false,
-          cssClass: 'apexcharts-yaxis-label ' + ylabels.style.cssClass
+          cssClass: 'apexcharts-yaxis-label ' + ylabels.style.cssClass,
+          maxWidth: ylabels.maxWidth,
         })
 
         elYaxisTexts.add(elLabel)
+
+        elLabel.on('click', (e) => {
+          if (typeof w.config.chart.events.xAxisLabelClick === 'function') {
+            const opts = Object.assign({}, w, {
+              labelIndex: i,
+            })
+
+            w.config.chart.events.xAxisLabelClick(e, this.ctx, opts)
+          }
+        })
 
         let elTooltipTitle = document.createElementNS(w.globals.SVGNS, 'title')
         elTooltipTitle.textContent = Array.isArray(label)
@@ -414,12 +461,12 @@ export default class XAxis {
     if (w.config.yaxis[0].title.text !== undefined) {
       let elXaxisTitle = graphics.group({
         class: 'apexcharts-yaxis-title apexcharts-xaxis-title-inversed',
-        transform: 'translate(' + translateYAxisX + ', 0)'
+        transform: 'translate(' + translateYAxisX + ', 0)',
       })
 
       let elXAxisTitleText = graphics.drawText({
-        x: 0,
-        y: w.globals.gridHeight / 2,
+        x: w.config.yaxis[0].title.offsetX,
+        y: w.globals.gridHeight / 2 + w.config.yaxis[0].title.offsetY,
         text: w.config.yaxis[0].title.text,
         textAnchor: 'middle',
         foreColor: w.config.yaxis[0].title.style.color,
@@ -428,7 +475,7 @@ export default class XAxis {
         fontFamily: w.config.yaxis[0].title.style.fontFamily,
         cssClass:
           'apexcharts-yaxis-title-text ' +
-          w.config.yaxis[0].title.style.cssClass
+          w.config.yaxis[0].title.style.cssClass,
       })
 
       elXaxisTitle.add(elXAxisTitleText)
@@ -451,7 +498,11 @@ export default class XAxis {
         0
       )
 
-      elYaxis.add(elVerticalLine)
+      if (this.elgrid && this.elgrid.elGridBorders && w.config.grid.show) {
+        this.elgrid.elGridBorders.add(elVerticalLine)
+      } else {
+        elYaxis.add(elVerticalLine)
+      }
     }
 
     if (w.config.yaxis[0].axisTicks.show) {
@@ -589,9 +640,8 @@ export default class XAxis {
 
     if (yAxisTextsInversed.length > 0) {
       // truncate rotated y axis in bar chart (x axis)
-      let firstLabelPosX = yAxisTextsInversed[
-        yAxisTextsInversed.length - 1
-      ].getBBox()
+      let firstLabelPosX =
+        yAxisTextsInversed[yAxisTextsInversed.length - 1].getBBox()
       let lastLabelPosX = yAxisTextsInversed[0].getBBox()
 
       if (firstLabelPosX.x < -20) {

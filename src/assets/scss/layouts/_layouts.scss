@@ -11,12 +11,7 @@
   border-radius: 20px;
 
   .body-wrapper-inner{
-    margin-top: 80px;
-    border-radius: 20px !important;
-    margin-bottom: 30px;
     min-height: calc(100vh - 110px);
-    margin-left: calc(#{$grid-gutter-width} / 2);
-    margin-right: calc(#{$grid-gutter-width} / 2);
   }
 
   .container-fluid {
@@ -24,6 +19,11 @@
     margin: 0 auto;
     padding: $grid-gutter-width;
     transition: 0.2s ease-in;
+    padding-top: 180px;
+
+    @include media-breakpoint-down(lg){
+      padding-top: 230px;
+    }
   }
 }
 
@@ -45,7 +45,11 @@
   &[data-sidebar-position="fixed"] {
     .left-sidebar {
       position: fixed;
-      top: 0;
+      top: 65px;
+
+      @include media-breakpoint-down(lg){
+        top: 131px;
+      }
     }
   }
 
@@ -101,6 +105,8 @@
     &[data-sidebartype="full"] {
       .left-sidebar {
         left: -$sidebar-width-full;
+        top: 0;
+        z-index: 12;
       }
 
       &.show-sidebar {
@@ -113,8 +119,9 @@
 
   }
   .left-sidebar {
-    .scroll-sidebar, .brand-logo {
+    .scroll-sidebar {
       padding: $sidebar-spacing-x;
+      height: calc(100vh - 80px);
     }
   }
 }

@@ -6,12 +6,15 @@
   "stackblitz": {
     "startCommand": "npm start"
   },
+  "scripts": {
+    "compile-sass": "npx sass --watch src/assets/scss/styles.scss src/assets/css/styles.min.css"
+  },
   "devDependencies": {
     "sass": "^1.54.8"
   },
   "dependencies": {
-    "apexcharts": "^3.37.0",
-    "bootstrap": "^5.3.0",
+    "apexcharts": "^3.54.1",
+    "bootstrap": "^5.3.3",
     "jquery": "^3.6.3"
   }
 }

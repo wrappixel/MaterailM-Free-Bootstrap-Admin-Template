@@ -35,7 +35,8 @@ export default class Annotations {
 
   drawAxesAnnotations() {
     const w = this.w
-    if (w.globals.axisCharts) {
+    if (w.globals.axisCharts && w.globals.dataPoints) {
+      // w.globals.dataPoints check added to fix  #1832
       let yAnnotations = this.yAxisAnnotations.drawYAxisAnnotations()
       let xAnnotations = this.xAxisAnnotations.drawXAxisAnnotations()
       let pointAnnotations = this.pointsAnnotations.drawPointAnnotations()
@@ -46,7 +47,7 @@ export default class Annotations {
       const annoElArray = [
         xAnnotations.node,
         yAnnotations.node,
-        pointAnnotations.node
+        pointAnnotations.node,
       ]
       for (let i = 0; i < 3; i++) {
         w.globals.dom.elGraphical.add(annoArray[i])
@@ -112,11 +113,11 @@ export default class Annotations {
       strokeDashArray,
       borderRadius,
       borderColor,
-      appendTo = '.apexcharts-annotations',
+      appendTo = '.apexcharts-svg',
       paddingLeft = 4,
       paddingRight = 4,
       paddingBottom = 2,
-      paddingTop = 2
+      paddingTop = 2,
     } = params
 
     const w = this.w
@@ -130,7 +131,7 @@ export default class Annotations {
       fontWeight: fontWeight || 'regular',
       fontFamily: fontFamily || w.config.chart.fontFamily,
       foreColor: foreColor || w.config.chart.foreColor,
-      cssClass: 'apexcharts-text ' + cssClass ? cssClass : ''
+      cssClass: 'apexcharts-text ' + cssClass ? cssClass : '',
     })
 
     const parent = w.globals.dom.baseEl.querySelector(appendTo)
@@ -167,7 +168,7 @@ export default class Annotations {
       y = 0,
       width = 20,
       height = 20,
-      appendTo = '.apexcharts-annotations'
+      appendTo = '.apexcharts-svg',
     } = params
 
     let img = w.globals.dom.Paper.image(path)
@@ -188,7 +189,7 @@ export default class Annotations {
       pushToMemory,
       context,
       type: 'xaxis',
-      contextMethod: context.addXaxisAnnotation
+      contextMethod: context.addXaxisAnnotation,
     })
     return context
   }
@@ -199,7 +200,7 @@ export default class Annotations {
       pushToMemory,
       context,
       type: 'yaxis',
-      contextMethod: context.addYaxisAnnotation
+      contextMethod: context.addYaxisAnnotation,
     })
     return context
   }
@@ -214,7 +215,7 @@ export default class Annotations {
       pushToMemory,
       context,
       type: 'point',
-      contextMethod: context.addPointAnnotation
+      contextMethod: context.addPointAnnotation,
     })
     return context
   }
@@ -224,7 +225,7 @@ export default class Annotations {
     pushToMemory,
     context,
     type,
-    contextMethod
+    contextMethod,
   }) {
     const me = context
     const w = me.w
@@ -272,7 +273,7 @@ export default class Annotations {
         id: anno.id ? anno.id : Utils.randomId(),
         method: contextMethod,
         label: 'addAnnotation',
-        params
+        params,
       })
     }
 
@@ -286,11 +287,14 @@ export default class Annotations {
     )
 
     // annotations added externally should be cleared out too
-    w.globals.memory.methodsToExec.map((m, i) => {
-      if (m.label === 'addText' || m.label === 'addAnnotation') {
+    for (let i = w.globals.memory.methodsToExec.length - 1; i >= 0; i--) {
+      if (
+        w.globals.memory.methodsToExec[i].label === 'addText' ||
+        w.globals.memory.methodsToExec[i].label === 'addAnnotation'
+      ) {
         w.globals.memory.methodsToExec.splice(i, 1)
       }
-    })
+    }
 
     annos = Utils.listToArray(annos)
 

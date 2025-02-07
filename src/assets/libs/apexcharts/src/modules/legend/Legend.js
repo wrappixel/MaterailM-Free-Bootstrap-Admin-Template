@@ -4,6 +4,7 @@ import Graphics from '../Graphics'
 import Series from '../Series'
 import Utils from '../../utils/Utils'
 import Helpers from './Helpers'
+import Markers from '../Markers'
 
 /**
  * ApexCharts Legend Class to draw legend.
@@ -12,7 +13,7 @@ import Helpers from './Helpers'
  **/
 
 class Legend {
-  constructor(ctx, opts) {
+  constructor(ctx) {
     this.ctx = ctx
     this.w = ctx.w
 
@@ -38,20 +39,14 @@ class Legend {
       this.isBarsDistributed ||
       gl.series.length > 1
 
+    this.legendHelpers.appendToForeignObject()
+
     if ((showLegendAlways || !gl.axisCharts) && cnf.legend.show) {
       while (gl.dom.elLegendWrap.firstChild) {
         gl.dom.elLegendWrap.removeChild(gl.dom.elLegendWrap.firstChild)
       }
 
       this.drawLegends()
-      if (!Utils.isIE11()) {
-        this.legendHelpers.appendToForeignObject()
-      } else {
-        // IE11 doesn't supports foreignObject, hence append it to <head>
-        document
-          .getElementsByTagName('head')[0]
-          .appendChild(this.legendHelpers.getLegendStyles())
-      }
 
       if (cnf.legend.position === 'bottom' || cnf.legend.position === 'top') {
         this.legendAlignHorizontal()
@@ -64,6 +59,81 @@ class Legend {
     }
   }
 
+  createLegendMarker({ i, fillcolor }) {
+    const w = this.w
+    const elMarker = document.createElement('span')
+    elMarker.classList.add('apexcharts-legend-marker')
+
+    let mShape = w.config.legend.markers.shape || w.config.markers.shape
+    let shape = mShape
+    if (Array.isArray(mShape)) {
+      shape = mShape[i]
+    }
+    let mSize = Array.isArray(w.config.legend.markers.size)
+      ? parseFloat(w.config.legend.markers.size[i])
+      : parseFloat(w.config.legend.markers.size)
+    let mOffsetX = Array.isArray(w.config.legend.markers.offsetX)
+      ? parseFloat(w.config.legend.markers.offsetX[i])
+      : parseFloat(w.config.legend.markers.offsetX)
+    let mOffsetY = Array.isArray(w.config.legend.markers.offsetY)
+      ? parseFloat(w.config.legend.markers.offsetY[i])
+      : parseFloat(w.config.legend.markers.offsetY)
+    let mBorderWidth = Array.isArray(w.config.legend.markers.strokeWidth)
+      ? parseFloat(w.config.legend.markers.strokeWidth[i])
+      : parseFloat(w.config.legend.markers.strokeWidth)
+
+    let mStyle = elMarker.style
+
+    mStyle.height = (mSize + mBorderWidth) * 2 + 'px'
+    mStyle.width = (mSize + mBorderWidth) * 2 + 'px'
+    mStyle.left = mOffsetX + 'px'
+    mStyle.top = mOffsetY + 'px'
+
+    if (w.config.legend.markers.customHTML) {
+      mStyle.background = 'transparent'
+      mStyle.color = fillcolor[i]
+
+      if (Array.isArray(w.config.legend.markers.customHTML)) {
+        if (w.config.legend.markers.customHTML[i]) {
+          elMarker.innerHTML = w.config.legend.markers.customHTML[i]()
+        }
+      } else {
+        elMarker.innerHTML = w.config.legend.markers.customHTML()
+      }
+    } else {
+      let markers = new Markers(this.ctx)
+
+      const markerConfig = markers.getMarkerConfig({
+        cssClass: `apexcharts-legend-marker apexcharts-marker apexcharts-marker-${shape}`,
+        seriesIndex: i,
+        strokeWidth: mBorderWidth,
+        size: mSize,
+      })
+
+      const SVGMarker = SVG(elMarker).size('100%', '100%')
+      const marker = new Graphics(this.ctx).drawMarker(0, 0, {
+        ...markerConfig,
+        pointFillColor: Array.isArray(fillcolor)
+          ? fillcolor[i]
+          : markerConfig.pointFillColor,
+        shape,
+      })
+
+      const shapesEls = SVG.select(
+        '.apexcharts-legend-marker.apexcharts-marker'
+      ).members
+      shapesEls.forEach((shapeEl) => {
+        if (shapeEl.node.classList.contains('apexcharts-marker-triangle')) {
+          shapeEl.node.style.transform = 'translate(50%, 45%)'
+        } else {
+          shapeEl.node.style.transform = 'translate(50%, 50%)'
+        }
+      })
+      SVGMarker.add(marker)
+    }
+    return elMarker
+  }
+
   drawLegends() {
     let me = this
     let w = this.w
@@ -71,7 +141,9 @@ class Legend {
     let fontFamily = w.config.legend.fontFamily
 
     let legendNames = w.globals.seriesNames
-    let fillcolor = w.globals.colors.slice()
+    let fillcolor = w.config.legend.markers.fillColors
+      ? w.config.legend.markers.fillColors.slice()
+      : w.globals.colors.slice()
 
     if (w.config.chart.type === 'heatmap') {
       const ranges = w.config.plotOptions.heatmap.colorScale.ranges
@@ -121,82 +193,11 @@ class Legend {
         }
       }
 
-      let elMarker = document.createElement('span')
-      elMarker.classList.add('apexcharts-legend-marker')
-
-      let mOffsetX = w.config.legend.markers.offsetX
-      let mOffsetY = w.config.legend.markers.offsetY
-      let mHeight = w.config.legend.markers.height
-      let mWidth = w.config.legend.markers.width
-      let mBorderWidth = w.config.legend.markers.strokeWidth
-      let mBorderColor = w.config.legend.markers.strokeColor
-      let mBorderRadius = w.config.legend.markers.radius
-
-      // todo - untested code below
-      // if (Array.isArray(w.config.legend.markers.shape)) {
-      // } else {
-      //   if (w.config.legend.markers.shape !== 'circle') {
-      //     mBorderRadius = 1
-      //   }
-      // }
-
-      let mStyle = elMarker.style
-
-      mStyle.background = fillcolor[i]
-      mStyle.color = fillcolor[i]
-      mStyle.setProperty('background', fillcolor[i], 'important')
-
-      // override fill color with custom legend.markers.fillColors
-      if (
-        w.config.legend.markers.fillColors &&
-        w.config.legend.markers.fillColors[i]
-      ) {
-        mStyle.background = w.config.legend.markers.fillColors[i]
-      }
-
-      // override with data color
-      if (w.globals.seriesColors[i] !== undefined) {
-        mStyle.background = w.globals.seriesColors[i]
-        mStyle.color = w.globals.seriesColors[i]
-      }
-
-      mStyle.height = Array.isArray(mHeight)
-        ? parseFloat(mHeight[i]) + 'px'
-        : parseFloat(mHeight) + 'px'
-      mStyle.width = Array.isArray(mWidth)
-        ? parseFloat(mWidth[i]) + 'px'
-        : parseFloat(mWidth) + 'px'
-      mStyle.left =
-        (Array.isArray(mOffsetX)
-          ? parseFloat(mOffsetX[i])
-          : parseFloat(mOffsetX)) + 'px'
-      mStyle.top =
-        (Array.isArray(mOffsetY)
-          ? parseFloat(mOffsetY[i])
-          : parseFloat(mOffsetY)) + 'px'
-      mStyle.borderWidth = Array.isArray(mBorderWidth)
-        ? mBorderWidth[i]
-        : mBorderWidth
-      mStyle.borderColor = Array.isArray(mBorderColor)
-        ? mBorderColor[i]
-        : mBorderColor
-      mStyle.borderRadius = Array.isArray(mBorderRadius)
-        ? parseFloat(mBorderRadius[i]) + 'px'
-        : parseFloat(mBorderRadius) + 'px'
-
-      if (w.config.legend.markers.customHTML) {
-        if (Array.isArray(w.config.legend.markers.customHTML)) {
-          if (w.config.legend.markers.customHTML[i]) {
-            elMarker.innerHTML = w.config.legend.markers.customHTML[i]()
-          }
-        } else {
-          elMarker.innerHTML = w.config.legend.markers.customHTML()
-        }
-      }
+      let elMarker = this.createLegendMarker({ i, fillcolor })
 
       Graphics.setAttrs(elMarker, {
         rel: i + 1,
-        'data:collapsed': collapsedSeries || ancillaryCollapsedSeries
+        'data:collapsed': collapsedSeries || ancillaryCollapsedSeries,
       })
 
       if (collapsedSeries || ancillaryCollapsedSeries) {
@@ -211,6 +212,8 @@ class Legend {
 
       let textColor = w.config.legend.labels.useSeriesColors
         ? w.globals.colors[i]
+        : Array.isArray(w.config.legend.labels.colors)
+        ? w.config.legend.labels.colors?.[i]
         : w.config.legend.labels.colors
 
       if (!textColor) {
@@ -227,7 +230,7 @@ class Legend {
         rel: i + 1,
         i,
         'data:default-text': encodeURIComponent(text),
-        'data:collapsed': collapsedSeries || ancillaryCollapsedSeries
+        'data:collapsed': collapsedSeries || ancillaryCollapsedSeries,
       })
 
       elLegend.appendChild(elMarker)
@@ -278,7 +281,7 @@ class Legend {
       Graphics.setAttrs(elLegend, {
         rel: i + 1,
         seriesName: Utils.escapeString(legendNames[i]),
-        'data:collapsed': collapsedSeries || ancillaryCollapsedSeries
+        'data:collapsed': collapsedSeries || ancillaryCollapsedSeries,
       })
 
       if (collapsedSeries || ancillaryCollapsedSeries) {
@@ -312,24 +315,24 @@ class Legend {
   setLegendWrapXY(offsetX, offsetY) {
     let w = this.w
 
-    let elLegendWrap = w.globals.dom.baseEl.querySelector('.apexcharts-legend')
+    let elLegendWrap = w.globals.dom.elLegendWrap
 
-    const legendRect = elLegendWrap.getBoundingClientRect()
+    const legendHeight = elLegendWrap.clientHeight
 
     let x = 0
     let y = 0
 
     if (w.config.legend.position === 'bottom') {
-      y = y + (w.globals.svgHeight - legendRect.height / 2)
+      y =
+        w.globals.svgHeight -
+        Math.min(legendHeight, w.globals.svgHeight / 2) -
+        5
     } else if (w.config.legend.position === 'top') {
       const dim = new Dimensions(this.ctx)
       const titleH = dim.dimHelpers.getTitleSubtitleCoords('title').height
       const subtitleH = dim.dimHelpers.getTitleSubtitleCoords('subtitle').height
 
-      y =
-        y +
-        (titleH > 0 ? titleH - 10 : 0) +
-        (subtitleH > 0 ? subtitleH - 10 : 0)
+      y = (titleH > 0 ? titleH - 10 : 0) + (subtitleH > 0 ? subtitleH - 10 : 0)
     }
 
     elLegendWrap.style.position = 'absolute'
@@ -340,10 +343,7 @@ class Legend {
     elLegendWrap.style.left = x + 'px'
     elLegendWrap.style.top = y + 'px'
 
-    if (w.config.legend.position === 'bottom') {
-      elLegendWrap.style.top = 'auto'
-      elLegendWrap.style.bottom = 5 - w.config.legend.offsetY + 'px'
-    } else if (w.config.legend.position === 'right') {
+    if (w.config.legend.position === 'right') {
       elLegendWrap.style.left = 'auto'
       elLegendWrap.style.right = 25 + w.config.legend.offsetX + 'px'
     }
@@ -359,11 +359,9 @@ class Legend {
   legendAlignHorizontal() {
     let w = this.w
 
-    let elLegendWrap = w.globals.dom.baseEl.querySelector('.apexcharts-legend')
+    let elLegendWrap = w.globals.dom.elLegendWrap
 
     elLegendWrap.style.right = 0
-
-    let lRect = this.legendHelpers.getLegendBBox()
 
     let dimensions = new Dimensions(this.ctx)
     let titleRect = dimensions.dimHelpers.getTitleSubtitleCoords('title')
@@ -372,10 +370,7 @@ class Legend {
     let offsetX = 20
     let offsetY = 0
 
-    // the whole legend box is set to bottom
-    if (w.config.legend.position === 'bottom') {
-      offsetY = -lRect.clwh / 1.8
-    } else if (w.config.legend.position === 'top') {
+    if (w.config.legend.position === 'top') {
       offsetY =
         titleRect.height +
         subtitleRect.height +
@@ -390,7 +385,7 @@ class Legend {
   legendAlignVertical() {
     let w = this.w
 
-    let lRect = this.legendHelpers.getLegendBBox()
+    let lRect = this.legendHelpers.getLegendDimensions()
 
     let offsetY = 20
     let offsetX = 0
@@ -410,6 +405,7 @@ class Legend {
     const w = this.w
 
     const hoverOverLegend =
+      e.target.classList.contains('apexcharts-legend-series') ||
       e.target.classList.contains('apexcharts-legend-text') ||
       e.target.classList.contains('apexcharts-legend-marker')
 
@@ -439,6 +435,7 @@ class Legend {
     if (w.config.legend.customLegendItems.length) return
 
     if (
+      e.target.classList.contains('apexcharts-legend-series') ||
       e.target.classList.contains('apexcharts-legend-text') ||
       e.target.classList.contains('apexcharts-legend-marker')
     ) {
@@ -461,7 +458,7 @@ class Legend {
         this.ctx.events.fireEvent('legendMarkerClick', [
           this.ctx,
           seriesCnt,
-          this.w
+          this.w,
         ])
       }
 
