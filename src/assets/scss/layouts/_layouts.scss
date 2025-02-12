@@ -111,6 +111,10 @@ body {
       .left-sidebar {
         left: -$sidebar-width-full;
         top: 0;
+<<<<<<< HEAD
+=======
+        z-index: 12;
+>>>>>>> 62ba11b127e554824a0f6e0a1cb6cb1d8baf2827
       }
 
       &.show-sidebar {
@@ -124,7 +128,12 @@ body {
   }
   .left-sidebar {
     .scroll-sidebar {
+<<<<<<< HEAD
       height: calc(100vh - 240px);
+=======
+      padding: $sidebar-spacing-x;
+      height: calc(100vh - 80px);
+>>>>>>> 62ba11b127e554824a0f6e0a1cb6cb1d8baf2827
     }
   }
 }
