@@ -12,7 +12,11 @@
   position: relative;
   z-index: 50;
   width: 100%;
+<<<<<<< HEAD
+  background: var(--bs-body-bg);
+=======
   background: $body-bg;
+>>>>>>> 62ba11b127e554824a0f6e0a1cb6cb1d8baf2827
   padding: 0 10px;
   top: 65px;
 
@@ -36,12 +40,21 @@
           padding: $navlink-padding;
           line-height: $header-height;
           height: $header-height;
+          color: var(--bs-link-color);
           display: flex;
           align-items: center;
           position: relative;
 
           font-size: 20px;
           z-index: 2;
+
+          i {
+            font-size: 20px;
+          }
+
+          &:hover {
+            color: var(--bs-primary);
+          }
         }
       }
     }

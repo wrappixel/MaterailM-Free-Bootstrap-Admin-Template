@@ -1,10 +1,10 @@
 
-# <a href="https://bootstrapdemos.wrappixel.com/MaterialM-free/src/html/index.html">MaterailM Free Bootstrap Admin Template</a>
-MaterailM Free Bootstrap Admin Template
+# <a href="https://demos.wrappixel.com/free-admin-templates/bootstrap/flexy-bootstrap-free/html/index.html">Flexy Bootstrap Free</a>
+Flexy Bootstrap Admin Dashboard
 
 <!-- Main image of Template -->
-<a target="_blank" href="https://www.wrappixel.com/templates/materialm-free-bootstrap-admin/">
-  <img src="https://www.wrappixel.com/wp-content/uploads/2024/05/materialM-free-preview-img.jpg" />
+<a target="_blank" href="https://www.wrappixel.com/templates/flexy-admin-lite/">
+  <img src="https://www.wrappixel.com/wp-content/uploads/edd/2024/05/flexy-free-bootstrap-admin-wpn.jpg" />
 </a>
 
 
@@ -13,25 +13,25 @@ MaterailM Free Bootstrap Admin Template
 <table>
 <thead>
 <tr>
-<th>MaterailM Bootstrap Free Version</th>
-<th>MaterailM Bootstrap Pro Version</th>
+<th>Flexy Bootstrap Free Version</th>
+<th>Flexy Bootstrap Pro Version</th>
 </tr>
 </thead>
 <tbody>
 <tr>
   <td>
-    <a href="https://bootstrapdemos.wrappixel.com/MaterialM-free/src/html/index.html">Live Preview</a>
+    <a href="https://demos.wrappixel.com/free-admin-templates/bootstrap/flexy-bootstrap-free/html/index.html">Live Preview</a>
   </td>
   <td>
-  <a href="https://bootstrapdemos.wrappixel.com/materialM/dist/main/index.html">Live Preview</a>
+  <a href="https://bootstrapdemos.wrappixel.com/flexy/dist/main/index.html">Live Preview</a>
   </td>
 </tr>
 <tr>
   <td>
-    <a href="https://www.wrappixel.com/templates/materialm-free-bootstrap-admin/">Download Now</a>
+    <a href="https://www.wrappixel.com/templates/flexy-admin-lite/">Download Now</a>
   </td>
   <td>
-    <a href="https://www.wrappixel.com/templates/materialm-admin-dashboard-template/?ref=33">Purchase Now</a>
+    <a href="https://www.wrappixel.com/templates/flexy-bootstrap-admin-template/?ref=33">Purchase Now</a>
   </td>
 </tr>
 <tr>
@@ -39,7 +39,7 @@ MaterailM Free Bootstrap Admin Template
   1 Basic Dashboard
   </td>
   <td>
-  3+ Colorful Dashboards
+  2+ Colorful Dashboards
   </td>
 </tr>
 <tr>
@@ -60,18 +60,18 @@ MaterailM Free Bootstrap Admin Template
 </tr>
 <tr>
   <td>
-  10+ Pages Template
+  6+ Pages Template
   </td>
   <td>
-  690+ Page Templates
+  500+ Page Templates
   </td>
 </tr>
 <tr>
   <td>
-  5+ UI Components
+  10+ UI Components
   </td>
   <td>
-  150+ UI Components
+  500+ UI Components
   </td>
 </tr>
 <tr>
@@ -111,7 +111,7 @@ MaterailM Free Bootstrap Admin Template
   -
   </td>
   <td>
-  6+ Unique Demos
+  5+ Unique Demos
   </td>
 </tr>
 <tr>
@@ -119,7 +119,7 @@ MaterailM Free Bootstrap Admin Template
   -
   </td>
   <td>
-  25+ Integrated Plugins
+  100+ Integrated Plugins
   </td>
 </tr>
 <tr>
@@ -143,12 +143,12 @@ MaterailM Free Bootstrap Admin Template
 
 # Upgrade to Premium version
 
-<a target="_blank" href="https://www.wrappixel.com/templates/materialm-admin-dashboard-template/?ref=33">
-  <img src="https://www.wrappixel.com/wp-content/uploads/edd/2024/05/materialm-bootstrap-admin-dashboard-wpn.jpg" alt="">
+<a target="_blank" href="https://www.wrappixel.com/templates/flexy-bootstrap-admin-template/?ref=33">
+  <img src="https://www.wrappixel.com/wp-content/uploads/edd/2024/05/flexy-bootstrap-admin-wpn.jpg" alt="">
 </a>
 <p>
-  Checkout our premium version of MaterailM bootstrap Dashboard Template for lots more features and ready to use page templates.<br>
-  <a href="https://bootstrapdemos.wrappixel.com/materialM/dist/main/index.html">Check Live Preview</a> | <a href="https://www.wrappixel.com/templates/materialm-admin-dashboard-template/?ref=33">Download</a>
+  Checkout our premium version of Flexy bootstrap Dashboard Template for lots more features and ready to use page templates.<br>
+  <a href="https://bootstrapdemos.wrappixel.com/flexy/dist/main/index.html">Check Live Preview</a> | <a href="https://www.wrappixel.com/templates/flexy-bootstrap-admin-template/?ref=33">Download</a>
 </p>
 
 <!-- Versions of Template -->
@@ -165,8 +165,8 @@ MaterailM Free Bootstrap Admin Template
 <tbody>
 <tr>
 <td>
-  <a href="https://www.wrappixel.com/templates/materialm-admin-dashboard-template/?ref=33" width="150px">
-    <img src="https://www.wrappixel.com/wp-content/uploads/edd/2024/05/materialm-bootstrap-admin-dashboard-wpn.jpg" alt="" style="max-width:150px;">
+  <a href="https://www.wrappixel.com/templates/flexy-bootstrap-admin-template/" width="150px">
+    <img src="https://www.wrappixel.com/wp-content/uploads/edd/2024/05/flexy-bootstrap-admin-wpn.jpg" alt="" style="max-width:150px;">
   </a>
 </td>
 <td>
@@ -197,8 +197,8 @@ MaterailM Free Bootstrap Admin Template
 <!-- Useful Links of Template -->
 # Useful Links
 - <p><a href="https://www.wrappixel.com/">Admin Theme</a> from Wrappixel</p>
-- <p><a href="https://www.wrappixel.com/templates/materialm-admin-dashboard-template/">Bootstrap Themes</a> from Wrappixel</p>
-- <p><a href="https://www.wrappixel.com/templates/materialm-admin-dashboard-template/">Free Bootstrap Admin Templates</a> from Wrappixel</p>
+- <p><a href="https://www.wrappixel.com/templates/materialpro/">Bootstrap Themes</a> from Wrappixel</p>
+- <p><a href="https://www.wrappixel.com/templates/materialpro-lite/">Free Bootstrap Admin Templates</a> from Wrappixel</p>
 - <p><a href="https://www.wrappixel.com/templates/materialpro-react-redux-admin/">React Bootstrap Template</a> from Wrappixel</p>
 - <p><a href="https://www.wrappixel.com/templates/materialpro-vuetify-admin/">Vuejs Templates</a> from Wrappixel</p>
 
