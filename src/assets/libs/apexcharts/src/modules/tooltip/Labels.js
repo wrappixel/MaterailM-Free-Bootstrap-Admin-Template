@@ -1,6 +1,7 @@
 import Formatters from '../Formatters'
 import DateTime from '../../utils/DateTime'
 import Utils from './Utils'
+import Data from '../Data'
 
 /**
  * ApexCharts Tooltip.Labels Class to draw texts on the tooltip.
@@ -23,12 +24,12 @@ export default class Labels {
     if (w.config.tooltip.custom !== undefined) {
       this.handleCustomTooltip({ i, j, y1, y2, w })
     } else {
-      this.toggleActiveInactiveSeries(shared)
+      this.toggleActiveInactiveSeries(shared, i)
     }
 
     let values = this.getValuesToPrint({
       i,
-      j
+      j,
     })
 
     this.printLabels({
@@ -37,7 +38,7 @@ export default class Labels {
       values,
       ttItems,
       shared,
-      e
+      e,
     })
 
     // Re-calculate tooltip dimensions now that we have drawn the text
@@ -78,7 +79,7 @@ export default class Labels {
         fn: f.yLbTitleFormatter,
         index: i,
         seriesIndex: i,
-        j
+        j,
       })
 
       if (w.config.chart.type === 'treemap') {
@@ -86,7 +87,7 @@ export default class Labels {
           series: w.globals.series,
           seriesIndex: i,
           dataPointIndex: j,
-          w
+          w,
         })
       }
 
@@ -94,11 +95,28 @@ export default class Labels {
 
       if (w.globals.axisCharts) {
         const getValBySeriesIndex = (index) => {
+          if (w.globals.isRangeData) {
+            return (
+              f.yLbFormatter(w.globals.seriesRangeStart?.[index]?.[j], {
+                series: w.globals.seriesRangeStart,
+                seriesIndex: index,
+                dataPointIndex: j,
+                w,
+              }) +
+              ' - ' +
+              f.yLbFormatter(w.globals.seriesRangeEnd?.[index]?.[j], {
+                series: w.globals.seriesRangeEnd,
+                seriesIndex: index,
+                dataPointIndex: j,
+                w,
+              })
+            )
+          }
           return f.yLbFormatter(w.globals.series[index][j], {
             series: w.globals.series,
             seriesIndex: index,
             dataPointIndex: j,
-            w
+            w,
           })
         }
         if (shared) {
@@ -108,7 +126,7 @@ export default class Labels {
             fn: f.yLbTitleFormatter,
             index: tIndex,
             seriesIndex: i,
-            j
+            j,
           })
           pColor = w.globals.colors[tIndex]
 
@@ -120,21 +138,25 @@ export default class Labels {
                 val: f.yLbFormatter(goal.value, {
                   seriesIndex: tIndex,
                   dataPointIndex: j,
-                  w
-                })
+                  w,
+                }),
               }
             })
           }
         } else {
           // get a color from a hover area (if it's a line pattern then get from a first line)
-          const targetFill = e?.target?.getAttribute('fill');
+          const targetFill = e?.target?.getAttribute('fill')
           if (targetFill) {
-            pColor = (targetFill.indexOf("url") !== -1) ? (
-              document
-                .querySelector(targetFill.substr(4).slice(0, -1))
-                .childNodes[0]
-                .getAttribute("stroke")
-            ) : targetFill;
+            if (targetFill.indexOf('url') !== -1) {
+              // pattern fill
+              if (targetFill.indexOf('Pattern') !== -1) {
+                pColor = w.globals.dom.baseEl
+                  .querySelector(targetFill.substr(4).slice(0, -1))
+                  .childNodes[0].getAttribute('stroke')
+              }
+            } else {
+              pColor = targetFill
+            }
           }
           val = getValBySeriesIndex(i)
           if (hasGoalValues(i) && Array.isArray(w.globals.seriesGoals[i][j])) {
@@ -144,8 +166,8 @@ export default class Labels {
                 val: f.yLbFormatter(goal.value, {
                   seriesIndex: i,
                   dataPointIndex: j,
-                  w
-                })
+                  w,
+                }),
               }
             })
           }
@@ -157,7 +179,7 @@ export default class Labels {
         val = f.yLbFormatter(w.globals.series[i], {
           ...w,
           seriesIndex: i,
-          dataPointIndex: i
+          dataPointIndex: i,
         })
       }
 
@@ -171,11 +193,11 @@ export default class Labels {
           goalVals,
           xVal,
           xAxisTTVal,
-          zVal
+          zVal,
         },
         seriesName,
         shared,
-        pColor
+        pColor,
       })
     }
   }
@@ -221,7 +243,7 @@ export default class Labels {
 
     return {
       yLbFormatter,
-      yLbTitleFormatter
+      yLbTitleFormatter,
     }
   }
 
@@ -231,7 +253,7 @@ export default class Labels {
       series: w.globals.series,
       seriesIndex,
       dataPointIndex: j,
-      w
+      w,
     })
   }
 
@@ -342,44 +364,43 @@ export default class Labels {
 
     if (shared && ttItemsChildren[0]) {
       // hide when no Val or series collapsed
+      if (w.config.tooltip.hideEmptySeries) {
+        let ttItemMarker = ttItems[t].querySelector(
+          '.apexcharts-tooltip-marker'
+        )
+        let ttItemText = ttItems[t].querySelector('.apexcharts-tooltip-text')
+        if (parseFloat(val) == 0) {
+          ttItemMarker.style.display = 'none'
+          ttItemText.style.display = 'none'
+        } else {
+          ttItemMarker.style.display = 'block'
+          ttItemText.style.display = 'block'
+        }
+      }
       if (
         typeof val === 'undefined' ||
         val === null ||
         w.globals.ancillaryCollapsedSeriesIndices.indexOf(t) > -1 ||
-        w.globals.collapsedSeriesIndices.indexOf(t) > -1
+        w.globals.collapsedSeriesIndices.indexOf(t) > -1 ||
+        (Array.isArray(ttCtx.tConfig.enabledOnSeries) &&
+          ttCtx.tConfig.enabledOnSeries.indexOf(t) === -1)
       ) {
         ttItemsChildren[0].parentNode.style.display = 'none'
       } else {
         ttItemsChildren[0].parentNode.style.display =
           w.config.tooltip.items.display
       }
-
-      // TODO: issue #1240 needs to be looked at again. commenting it because this also hides single series values with 0 in it (shared tooltip)
-
-      // if (w.globals.stackedSeriesTotals[j] === 0) {
-      //   // shared tooltip and all values are null, so we need to hide the x value too
-      //   let allYZeroForJ = false
-      //   for (let si = 1; si < w.globals.seriesYvalues.length; si++) {
-      //     if (
-      //       w.globals.seriesYvalues[si][j] ===
-      //       w.globals.seriesYvalues[si - 1][j]
-      //     ) {
-      //       allYZeroForJ = true
-      //     }
-      //   }
-
-      //   if (allYZeroForJ) {
-      //     ttCtx.tooltipTitle.style.display = 'none'
-      //   } else {
-      //     ttCtx.tooltipTitle.style.display = w.config.tooltip.items.display
-      //   }
-      // } else {
-      //   ttCtx.tooltipTitle.style.display = w.config.tooltip.items.display
-      // }
+    } else {
+      if (
+        Array.isArray(ttCtx.tConfig.enabledOnSeries) &&
+        ttCtx.tConfig.enabledOnSeries.indexOf(t) === -1
+      ) {
+        ttItemsChildren[0].parentNode.style.display = 'none'
+      }
     }
   }
 
-  toggleActiveInactiveSeries(shared) {
+  toggleActiveInactiveSeries(shared, i) {
     const w = this.w
     if (shared) {
       // make all tooltips active
@@ -390,7 +411,7 @@ export default class Labels {
 
       // enable the first tooltip text group
       let firstTooltipSeriesGroup = w.globals.dom.baseEl.querySelector(
-        '.apexcharts-tooltip-series-group'
+        `.apexcharts-tooltip-series-group-${i}`
       )
 
       if (firstTooltipSeriesGroup) {
@@ -413,7 +434,7 @@ export default class Labels {
       series: w.globals.series,
       seriesIndex: i,
       dataPointIndex: j,
-      w
+      w,
     }
 
     let zFormatter = w.globals.ttZFormatter
@@ -425,14 +446,23 @@ export default class Labels {
         xVal = filteredSeriesX[i][j]
         if (filteredSeriesX[i].length === 0) {
           // a series (possibly the first one) might be collapsed, so get the next active index
-          const firstActiveSeriesIndex = this.tooltipUtil.getFirstActiveXArray(
-            filteredSeriesX
-          )
+          const firstActiveSeriesIndex =
+            this.tooltipUtil.getFirstActiveXArray(filteredSeriesX)
           xVal = filteredSeriesX[firstActiveSeriesIndex][j]
         }
       } else {
-        xVal =
-          typeof w.globals.labels[j] !== 'undefined' ? w.globals.labels[j] : ''
+        const dataFormat = new Data(this.ctx)
+        if (dataFormat.isFormatXY()) {
+          xVal =
+            typeof w.config.series[i].data[j] !== 'undefined'
+              ? w.config.series[i].data[j].x
+              : ''
+        } else {
+          xVal =
+            typeof w.globals.labels[j] !== 'undefined'
+              ? w.globals.labels[j]
+              : ''
+        }
       }
     }
 
@@ -447,7 +477,7 @@ export default class Labels {
         {
           i: undefined,
           dateFormatter: new DateTime(this.ctx).formatDate,
-          w: this.w
+          w: this.w,
         }
       )
     } else {
@@ -480,7 +510,7 @@ export default class Labels {
       val: Array.isArray(val) ? val.join(' ') : val,
       xVal: Array.isArray(xVal) ? xVal.join(' ') : xVal,
       xAxisTTVal: Array.isArray(xAxisTTVal) ? xAxisTTVal.join(' ') : xAxisTTVal,
-      zVal
+      zVal,
     }
   }
 
@@ -500,7 +530,7 @@ export default class Labels {
       dataPointIndex: j,
       y1,
       y2,
-      w
+      w,
     })
   }
 }

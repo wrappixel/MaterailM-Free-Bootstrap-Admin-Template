@@ -10,7 +10,7 @@ export default class Globals {
     gl.seriesCandleC = []
     gl.seriesRangeStart = []
     gl.seriesRangeEnd = []
-    gl.seriesRangeBar = []
+    gl.seriesRange = []
     gl.seriesPercent = []
     gl.seriesGoals = []
     gl.seriesX = []
@@ -26,18 +26,23 @@ export default class Globals {
     gl.seriesYvalues = [] // we will need this when deciding which series
     // user hovered on
     gl.labels = []
-    gl.hasGroups = false
+    gl.hasXaxisGroups = false
     gl.groups = []
+    gl.barGroups = []
+    gl.lineGroups = []
+    gl.areaGroups = []
+    gl.hasSeriesGroups = false
+    gl.seriesGroups = []
     gl.categoryLabels = []
     gl.timescaleLabels = []
     gl.noLabelsProvided = false
     gl.resizeTimer = null
     gl.selectionResizeTimer = null
+    gl.lastWheelExecution = 0
     gl.delayedElements = []
     gl.pointsArray = []
     gl.dataLabelsRects = []
     gl.isXNumeric = false
-    gl.xaxisLabelsCount = 0
     gl.skipLastTimelinelabel = false
     gl.skipFirstTimelinelabel = false
     gl.isDataXYZ = false
@@ -68,6 +73,7 @@ export default class Globals {
     gl.zRange = 0
     gl.dataPoints = 0
     gl.xTickAmount = 0
+    gl.multiAxisTickAmount = 0
   }
 
   globalVars(config) {
@@ -82,31 +88,31 @@ export default class Globals {
         selection: [],
         dataPointSelection: [],
         zoomed: [],
-        scrolled: []
+        scrolled: [],
       },
       colors: [],
       clientX: null,
       clientY: null,
       fill: {
-        colors: []
+        colors: [],
       },
       stroke: {
-        colors: []
+        colors: [],
       },
       dataLabels: {
         style: {
-          colors: []
-        }
+          colors: [],
+        },
       },
       radarPolygons: {
         fill: {
-          colors: []
-        }
+          colors: [],
+        },
       },
       markers: {
         colors: [],
         size: config.markers.size,
-        largestSize: 0
+        largestSize: 0,
       },
       animationEnded: false,
       isTouchDevice: 'ontouchstart' in window || navigator.msMaxTouchPoints,
@@ -131,10 +137,8 @@ export default class Globals {
       capturedSeriesIndex: -1,
       capturedDataPointIndex: -1,
       selectedDataPoints: [],
-      goldenPadding: 35, // this value is used at a lot of places for spacing purpose
       invalidLogScale: false, // if a user enabled log scale but the data provided is not valid to generate a log scale, turn on this flag
       ignoreYAxisIndexes: [], // when series are being collapsed in multiple y axes, ignore certain index
-      yAxisSameScaleIndices: [],
       maxValsInArrayIndex: 0,
       radialSize: 0,
       selection: undefined,
@@ -161,7 +165,7 @@ export default class Globals {
       locale: {}, // the current locale values will be preserved here for global access
       dom: {}, // for storing all dom nodes in this particular property
       memory: {
-        methodsToExec: []
+        methodsToExec: [],
       },
       shouldAnimate: true,
       skipLastTimelinelabel: false, // when last label is cropped, skip drawing it
@@ -170,6 +174,7 @@ export default class Globals {
       axisCharts: true, // chart type = line or area or bar
       // (refer them also as plot charts in the code)
       isDataXYZ: false, // bool: data was provided in a {[x,y,z]} pattern
+      isSlopeChart: config.plotOptions.line.isSlopeChart,
       resized: false, // bool: user has resized
       resizeTimer: null, // timeout function to make a small delay before
       // drawing when user resized
@@ -208,7 +213,38 @@ export default class Globals {
       yAxisWidths: [],
       translateXAxisY: 0,
       translateXAxisX: 0,
-      tooltip: null
+      tooltip: null,
+      // Rules for niceScaleAllowedMagMsd:
+      // 1) An array of two arrays only ([[],[]]):
+      //    * array[0][]: influences labelling of data series that contain only integers
+      //       - must contain only integers (or expect ugly ticks)
+      //    * array[1][]: influences labelling of data series that contain at least one float
+      //       - may contain floats
+      //    * both arrays:
+      //       - each array[][i] ideally satisfy: 10 mod array[][i] == 0 (or expect ugly ticks)
+      //       - to avoid clipping data point keep each array[][i] >= i
+      // 2) each array[i][] contains 11 values, for all possible index values 0..10.
+      //    array[][0] should not be needed (not proven) but ensures non-zero is returned.
+      //
+      // Users can effectively force their preferred "magMsd" through stepSize and
+      // forceNiceScale. With forceNiceScale: true, stepSize becomes normalizable to the
+      // axis's min..max range, which allows users to set stepSize to an integer 1..10, for
+      // example, stepSize: 3. This value will be preferred to the value determined through
+      // this array. The range-normalized value is checked for consistency with other
+      // user defined options and will be ignored if inconsistent.
+      niceScaleAllowedMagMsd: [
+        [1, 1, 2, 5, 5, 5, 10, 10, 10, 10, 10],
+        [1, 1, 2, 5, 5, 5, 10, 10, 10, 10, 10],
+      ],
+      // Default ticks based on SVG size. These values have high numbers
+      // of divisors. The array is indexed using a calculated maxTicks value
+      // divided by 2 simply to halve the array size. See Scales.niceScale().
+      niceScaleDefaultTicks: [
+        1, 2, 4, 4, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 12, 12, 12, 12,
+        12, 12, 12, 12, 12, 24,
+      ],
+      seriesYAxisMap: [], // Given yAxis index, return all series indices belonging to it. Multiple series can be referenced to each yAxis.
+      seriesYAxisReverseMap: [], // Given a Series index, return its yAxis index.
     }
   }
 

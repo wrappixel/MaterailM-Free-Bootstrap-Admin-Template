@@ -23,6 +23,11 @@ export default class DimYAxis {
     const axesUtils = new AxesUtils(this.dCtx.ctx)
 
     w.config.yaxis.map((yaxe, index) => {
+      const formatterArgs = {
+        seriesIndex: index,
+        dataPointIndex: -1,
+        w,
+      }
       const yS = w.globals.yAxisScale[index]
       let yAxisMinWidth = 0
       if (
@@ -39,20 +44,21 @@ export default class DimYAxis {
       ) {
         let lbFormatter = w.globals.yLabelFormatters[index]
         let minV = yS.niceMin === Number.MIN_VALUE ? 0 : yS.niceMin
-        const longestStr =
-          String(minV).length > String(yS.niceMax).length ? minV : yS.niceMax
+        let val = yS.result.reduce((acc, curr) => {
+          return String(lbFormatter(acc, formatterArgs))?.length >
+            String(lbFormatter(curr, formatterArgs))?.length
+            ? acc
+            : curr
+        }, minV)
+
+        val = lbFormatter(val, formatterArgs)
 
         // the second parameter -1 is the index of tick which user can use in the formatter
-        let val = lbFormatter(longestStr, {
-          seriesIndex: index,
-          dataPointIndex: -1,
-          w
-        })
         let valArr = val
 
         // if user has specified a custom formatter, and the result is null or empty, we need to discard the formatter and take the value as it is.
         if (typeof val === 'undefined' || val.length === 0) {
-          val = longestStr
+          val = yS.niceMax
         }
 
         if (w.globals.isBarHorizontal) {
@@ -103,12 +109,12 @@ export default class DimYAxis {
           height:
             arrLabelrect.height > rect.height
               ? arrLabelrect.height
-              : rect.height
+              : rect.height,
         })
       } else {
         ret.push({
           width,
-          height
+          height,
         })
       }
     })
@@ -139,12 +145,12 @@ export default class DimYAxis {
 
         ret.push({
           width: rect.width,
-          height: rect.height
+          height: rect.height,
         })
       } else {
         ret.push({
           width: 0,
-          height: 0
+          height: 0,
         })
       }
     })
@@ -160,7 +166,7 @@ export default class DimYAxis {
     let padding = w.globals.yAxisScale.length > 1 ? 10 : 0
     const axesUtils = new AxesUtils(this.dCtx.ctx)
 
-    const isHiddenYAxis = function(index) {
+    const isHiddenYAxis = function (index) {
       return w.globals.ignoreYAxisIndexes.indexOf(index) > -1
     }
 

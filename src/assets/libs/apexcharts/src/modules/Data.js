@@ -143,8 +143,7 @@ export default class Data {
     for (let j = 0; j < ser[activeI].data.length; j++) {
       const isXString = typeof ser[activeI].data[j].x === 'string'
       const isXArr = Array.isArray(ser[activeI].data[j].x)
-      const isXDate =
-        !isXArr && !!dt.isValidDate(ser[activeI].data[j].x.toString())
+      const isXDate = !isXArr && !!dt.isValidDate(ser[activeI].data[j].x)
 
       if (isXString || isXDate) {
         // user supplied '01/01/2017' or a date string (a JS date object is not supported)
@@ -157,6 +156,14 @@ export default class Data {
             // a category and not a numeric x value
             this.fallbackToCategory = true
             this.twoDSeriesX.push(ser[activeI].data[j].x)
+
+            if (
+              !isNaN(ser[activeI].data[j].x) &&
+              this.w.config.xaxis.type !== 'category' &&
+              typeof ser[activeI].data[j].x !== 'string'
+            ) {
+              gl.isXNumeric = true
+            }
           }
         } else {
           if (cnf.xaxis.type === 'datetime') {
@@ -199,13 +206,14 @@ export default class Data {
       range = this.handleRangeDataFormat('xy', ser, i)
     }
 
-    gl.seriesRangeStart.push(range.start)
-    gl.seriesRangeEnd.push(range.end)
+    // Fix: RangeArea Chart: hide all series results in a crash #3984
+    gl.seriesRangeStart.push(range.start === undefined ? [] : range.start)
+    gl.seriesRangeEnd.push(range.end === undefined ? [] : range.end)
 
-    gl.seriesRangeBar.push(range.rangeUniques)
+    gl.seriesRange.push(range.rangeUniques)
 
     // check for overlaps to avoid clashes in a timeline chart
-    gl.seriesRangeBar.forEach((sr, si) => {
+    gl.seriesRange.forEach((sr, si) => {
       if (sr) {
         sr.forEach((sarr, sarri) => {
           sarr.y.forEach((arr, arri) => {
@@ -264,37 +272,32 @@ export default class Data {
         return {
           x: r.x,
           overlaps: [],
-          y: []
+          y: [],
         }
       })
 
-    const err =
-      'Please provide [Start, End] values in valid format. Read more https://apexcharts.com/docs/series/#rangecharts'
-
-    const serObj = new Series(this.ctx)
-    const activeIndex = serObj.getActiveConfigSeriesIndex()
     if (format === 'array') {
-      if (ser[activeIndex].data[0][1].length !== 2) {
-        throw new Error(err)
-      }
       for (let j = 0; j < ser[i].data.length; j++) {
-        rangeStart.push(ser[i].data[j][1][0])
-        rangeEnd.push(ser[i].data[j][1][1])
+        if (Array.isArray(ser[i].data[j])) {
+          rangeStart.push(ser[i].data[j][1][0])
+          rangeEnd.push(ser[i].data[j][1][1])
+        } else {
+          rangeStart.push(ser[i].data[j])
+          rangeEnd.push(ser[i].data[j])
+        }
       }
     } else if (format === 'xy') {
-      if (ser[activeIndex].data[0].y.length !== 2) {
-        throw new Error(err)
-      }
       for (let j = 0; j < ser[i].data.length; j++) {
+        let isDataPoint2D = Array.isArray(ser[i].data[j].y)
         const id = Utils.randomId()
         const x = ser[i].data[j].x
         const y = {
-          y1: ser[i].data[j].y[0],
-          y2: ser[i].data[j].y[1],
-          rangeName: id
+          y1: isDataPoint2D ? ser[i].data[j].y[0] : ser[i].data[j].y,
+          y2: isDataPoint2D ? ser[i].data[j].y[1] : ser[i].data[j].y,
+          rangeName: id,
         }
 
-        // mutating config object by adding a new property
+        // CAUTION: mutating config object by adding a new property
         // TODO: As this is specifically for timeline rangebar charts, update the docs mentioning the series only supports xy format
         ser[i].data[j].rangeName = id
 
@@ -309,7 +312,7 @@ export default class Data {
     return {
       start: rangeStart,
       end: rangeEnd,
-      rangeUniques: uniqueKeys
+      rangeUniques: uniqueKeys,
     }
   }
 
@@ -380,7 +383,7 @@ export default class Data {
       h: serH,
       m: serM,
       l: serL,
-      c: serC
+      c: serC,
     }
   }
 
@@ -395,11 +398,34 @@ export default class Data {
 
     gl.isRangeBar = cnf.chart.type === 'rangeBar' && gl.isBarHorizontal
 
-    gl.hasGroups =
+    gl.hasXaxisGroups =
       cnf.xaxis.type === 'category' && cnf.xaxis.group.groups.length > 0
-    if (gl.hasGroups) {
+    if (gl.hasXaxisGroups) {
       gl.groups = cnf.xaxis.group.groups
     }
+
+    ser.forEach((s, i) => {
+      if (s.name !== undefined) {
+        gl.seriesNames.push(s.name)
+      } else {
+        gl.seriesNames.push('series-' + parseInt(i + 1, 10))
+      }
+    })
+
+    this.coreUtils.setSeriesYAxisMappings()
+    // At this point, every series that didn't have a user defined group name
+    // has been given a name according to the yaxis the series is referenced by.
+    // This fits the existing behaviour where all series associated with an axis
+    // are defacto presented as a single group. It is now formalised.
+    let buckets = []
+    let groups = [...new Set(cnf.series.map((s) => s.group))]
+    cnf.series.forEach((s, i) => {
+      let index = groups.indexOf(s.group)
+      if (!buckets[index]) buckets[index] = []
+
+      buckets[index].push(gl.seriesNames[i])
+    })
+    gl.seriesGroups = buckets
 
     const handleDates = () => {
       for (let j = 0; j < xlabels.length; j++) {
@@ -439,7 +465,9 @@ export default class Data {
         ser[i].type === 'rangeArea'
       ) {
         gl.isRangeData = true
-        this.handleRangeData(ser, i)
+        if (cnf.chart.type === 'rangeBar' || cnf.chart.type === 'rangeArea') {
+          this.handleRangeData(ser, i)
+        }
       }
 
       if (this.isMultiFormat()) {
@@ -490,12 +518,6 @@ export default class Data {
 
       gl.seriesZ.push(this.threeDSeries)
 
-      if (ser[i].name !== undefined) {
-        gl.seriesNames.push(ser[i].name)
-      } else {
-        gl.seriesNames.push('series-' + parseInt(i + 1, 10))
-      }
-
       // overrided default color if user inputs color with series data
       if (ser[i].color !== undefined) {
         gl.seriesColors.push(ser[i].color)
@@ -542,16 +564,18 @@ export default class Data {
       // user provided labels in x prop in [{ x: 3, y: 55 }] data, and those labels are already stored in gl.labels[0], so just re-arrange the gl.labels array
       gl.labels = gl.labels[0]
 
-      if (gl.seriesRangeBar.length) {
-        gl.seriesRangeBar.map((srt) => {
+      if (gl.seriesRange.length) {
+        gl.seriesRange.map((srt) => {
           srt.forEach((sr) => {
             if (gl.labels.indexOf(sr.x) < 0 && sr.x) {
               gl.labels.push(sr.x)
             }
           })
         })
-        gl.labels = gl.labels.filter(
-          (elem, pos, arr) => arr.indexOf(elem) === pos
+        // remove duplicate x-axis labels
+        gl.labels = Array.from(
+          new Set(gl.labels.map(JSON.stringify)),
+          JSON.parse
         )
       }
 
@@ -604,7 +628,9 @@ export default class Data {
       }
 
       // turn on the isXNumeric flag to allow minX and maxX to function properly
-      gl.isXNumeric = true
+      if (!this.w.globals.isBarHorizontal) {
+        gl.isXNumeric = true
+      }
     }
 
     // no series to pull labels from, put a 0-10 series
@@ -649,22 +675,23 @@ export default class Data {
     if (gl.axisCharts) {
       // axisCharts includes line / area / column / scatter
       this.parseDataAxisCharts(ser)
+      this.coreUtils.getLargestSeries()
     } else {
       // non-axis charts are pie / donut
       this.parseDataNonAxisCharts(ser)
     }
 
-    this.coreUtils.getLargestSeries()
-
     // set Null values to 0 in all series when user hides/shows some series
-    if (cnf.chart.type === 'bar' && cnf.chart.stacked) {
+    if (cnf.chart.stacked) {
       const series = new Series(this.ctx)
       gl.series = series.setNullSeriesToZeroValues(gl.series)
     }
 
     this.coreUtils.getSeriesTotals()
     if (gl.axisCharts) {
-      this.coreUtils.getStackedSeriesTotals()
+      gl.stackedSeriesTotals = this.coreUtils.getStackedSeriesTotals()
+      gl.stackedSeriesTotalsByGroups =
+        this.coreUtils.getStackedSeriesTotalsByGroups()
     }
 
     this.coreUtils.getPercentSeries()
@@ -692,14 +719,25 @@ export default class Data {
 
   excludeCollapsedSeriesInYAxis() {
     const w = this.w
-    w.globals.ignoreYAxisIndexes = w.globals.collapsedSeries.map(
-      (collapsed, i) => {
-        // fix issue #1215
-        // if stacked, not returning collapsed.index to preserve yaxis
-        if (this.w.globals.isMultipleYAxis && !w.config.chart.stacked) {
-          return collapsed.index
+    // Post revision 3.46.0 there is no longer a strict one-to-one
+    // correspondence between series and Y axes.
+    // An axis can be ignored only while all series referenced by it
+    // are collapsed.
+    let yAxisIndexes = []
+    w.globals.seriesYAxisMap.forEach((yAxisArr, yi) => {
+      let collapsedCount = 0
+      yAxisArr.forEach((seriesIndex) => {
+        if (w.globals.collapsedSeriesIndices.indexOf(seriesIndex) !== -1) {
+          collapsedCount++
         }
+      })
+      // It's possible to have a yaxis that doesn't reference any series yet,
+      // eg, because there are no series' yet, so don't list it as ignored
+      // prematurely.
+      if (collapsedCount > 0 && collapsedCount == yAxisArr.length) {
+        yAxisIndexes.push(yi)
       }
-    )
+    })
+    w.globals.ignoreYAxisIndexes = yAxisIndexes.map((x) => x)
   }
 }

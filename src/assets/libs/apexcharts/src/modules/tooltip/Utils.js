@@ -1,4 +1,5 @@
 import Utilities from '../../utils/Utils'
+import Graphics from '../Graphics'
 
 /**
  * ApexCharts Tooltip.Utils Class to support Tooltip functionality.
@@ -69,21 +70,11 @@ export default class Utils {
 
     let capturedSeries = null
     let closest = null
-    let seriesXValArr = []
-    let seriesYValArr = []
 
-    //add extra values to show markers for the first points. Included both axes to avoid incorrect positioning of the marker
-    w.globals.seriesXvalues.forEach((value) => {
-      seriesXValArr.push([value[0] + 0.000001].concat(value))
-    })
-    w.globals.seriesYvalues.forEach((value) => {
-      seriesYValArr.push([value[0] + 0.000001].concat(value))
-    })
-
-    seriesXValArr = seriesXValArr.map((seriesXVal) => {
+    let seriesXValArr = w.globals.seriesXvalues.map((seriesXVal) => {
       return seriesXVal.filter((s) => Utilities.isNumber(s))
     })
-    seriesYValArr = seriesYValArr.map((seriesYVal) => {
+    let seriesYValArr = w.globals.seriesYvalues.map((seriesYVal) => {
       return seriesYVal.filter((s) => Utilities.isNumber(s))
     })
 
@@ -132,7 +123,7 @@ export default class Utils {
       capturedSeries,
       j: w.globals.isBarHorizontal ? jHorz : j,
       hoverX,
-      hoverY
+      hoverY,
     }
   }
 
@@ -155,7 +146,7 @@ export default class Utils {
     Xarrays.forEach((arrX) => {
       arrX.forEach((x, iX) => {
         const newDiff = Math.abs(hoverX - x)
-        if (newDiff < diffX) {
+        if (newDiff <= diffX) {
           diffX = newDiff
           j = iX
         }
@@ -170,7 +161,7 @@ export default class Utils {
 
       Yarrays.forEach((arrY, iAY) => {
         const newDiff = Math.abs(hoverY - arrY[j])
-        if (newDiff < diffY) {
+        if (newDiff <= diffY) {
           diffY = newDiff
           currIndex = iAY
         }
@@ -179,7 +170,7 @@ export default class Utils {
 
     return {
       index: currIndex,
-      j
+      j,
     }
   }
 
@@ -219,7 +210,7 @@ export default class Utils {
     }
 
     return {
-      index: currIndex
+      index: currIndex,
     }
   }
 
@@ -280,9 +271,16 @@ export default class Utils {
     return totalHeight
   }
 
-  getElMarkers() {
+  getElMarkers(capturedSeries) {
+    // The selector .apexcharts-series-markers-wrap > * includes marker groups for which the
+    // .apexcharts-series-markers class is not added due to null values or discrete markers
+    if (typeof capturedSeries == 'number') {
+      return this.w.globals.dom.baseEl.querySelectorAll(
+        `.apexcharts-series[data\\:realIndex='${capturedSeries}'] .apexcharts-series-markers-wrap > *`
+      )
+    }
     return this.w.globals.dom.baseEl.querySelectorAll(
-      ' .apexcharts-series-markers'
+      '.apexcharts-series-markers-wrap > *'
     )
   }
 
@@ -308,9 +306,16 @@ export default class Utils {
     return markers
   }
 
-  hasMarkers() {
-    const markers = this.getElMarkers()
+  hasMarkers(capturedSeries) {
+    const markers = this.getElMarkers(capturedSeries)
     return markers.length > 0
+  }
+
+  getPathFromPoint(point, size) {
+    let cx = Number(point.getAttribute('cx'))
+    let cy = Number(point.getAttribute('cy'))
+    let shape = point.getAttribute('shape')
+    return new Graphics(this.ctx).getMarkerPath(cx, cy, shape, size)
   }
 
   getElBars() {

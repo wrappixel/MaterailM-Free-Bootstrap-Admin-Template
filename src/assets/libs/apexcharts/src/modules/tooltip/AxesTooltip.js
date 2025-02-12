@@ -74,16 +74,6 @@ class AxesTooltip {
         ? `apexcharts-yaxistooltip apexcharts-yaxistooltip-${i} apexcharts-yaxistooltip-right`
         : `apexcharts-yaxistooltip apexcharts-yaxistooltip-${i} apexcharts-yaxistooltip-left`
 
-      w.globals.yAxisSameScaleIndices.map((samescales, ssi) => {
-        samescales.map((s, si) => {
-          if (si === i) {
-            tooltipCssClass += w.config.yaxis[si].show
-              ? ` `
-              : ` apexcharts-yaxistooltip-hidden`
-          }
-        })
-      })
-
       let renderTo = w.globals.dom.elWrap
 
       let yaxisTooltip = w.globals.dom.baseEl.querySelector(
@@ -171,17 +161,29 @@ class AxesTooltip {
   drawYaxisTooltipText(index, clientY, xyRatios) {
     const ttCtx = this.ttCtx
     const w = this.w
+    const gl = w.globals
+    const yAxisSeriesArr = gl.seriesYAxisMap[index]
 
-    let lbFormatter = w.globals.yLabelFormatters[index]
-
-    if (ttCtx.yaxisTooltips[index]) {
+    if (ttCtx.yaxisTooltips[index] && yAxisSeriesArr.length > 0) {
+      const lbFormatter = gl.yLabelFormatters[index]
       const elGrid = ttCtx.getElGrid()
       const seriesBound = elGrid.getBoundingClientRect()
 
-      const hoverY = (clientY - seriesBound.top) * xyRatios.yRatio[index]
-      const height = w.globals.maxYArr[index] - w.globals.minYArr[index]
+      // We can use the index of any series referenced by the Yaxis
+      // because they will all return the same value.
+      const seriesIndex = yAxisSeriesArr[0]
+      let translationsIndex = 0
+      if (xyRatios.yRatio.length > 1) {
+        translationsIndex = seriesIndex
+      }
+      const hoverY =
+        (clientY - seriesBound.top) * xyRatios.yRatio[translationsIndex]
+      const height = gl.maxYArr[seriesIndex] - gl.minYArr[seriesIndex]
+      let val = gl.minYArr[seriesIndex] + (height - hoverY)
 
-      const val = w.globals.minYArr[index] + (height - hoverY)
+      if (w.config.yaxis[index].reversed) {
+        val = gl.maxYArr[seriesIndex] - (height - hoverY)
+      }
 
       ttCtx.tooltipPosition.moveYCrosshairs(clientY - seriesBound.top)
       ttCtx.yaxisTooltipText[index].innerHTML = lbFormatter(val)

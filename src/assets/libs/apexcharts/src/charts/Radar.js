@@ -36,17 +36,18 @@ class Radar {
 
     this.defaultSize =
       w.globals.svgHeight < w.globals.svgWidth
-        ? w.globals.gridHeight + w.globals.goldenPadding * 1.5
+        ? w.globals.gridHeight
         : w.globals.gridWidth
 
     this.isLog = w.config.yaxis[0].logarithmic
+    this.logBase = w.config.yaxis[0].logBase
 
     this.coreUtils = new CoreUtils(this.ctx)
     this.maxValue = this.isLog
-      ? this.coreUtils.getLogVal(w.globals.maxY, 0)
+      ? this.coreUtils.getLogVal(this.logBase, w.globals.maxY, 0)
       : w.globals.maxY
     this.minValue = this.isLog
-      ? this.coreUtils.getLogVal(this.w.globals.minY, 0)
+      ? this.coreUtils.getLogVal(this.logBase, this.w.globals.minY, 0)
       : w.globals.minY
 
     this.polygons = w.config.plotOptions.radar.polygons
@@ -90,7 +91,7 @@ class Radar {
 
     let ret = this.graphics.group({
       class: 'apexcharts-radar-series apexcharts-plot-series',
-      transform: `translate(${translateX || 0}, ${translateY || 0})`
+      transform: `translate(${translateX || 0}, ${translateY || 0})`,
     })
 
     let dataPointsPos = []
@@ -98,7 +99,7 @@ class Radar {
     let elDataPointsMain = null
 
     this.yaxisLabels = this.graphics.group({
-      class: 'apexcharts-yaxis'
+      class: 'apexcharts-yaxis',
     })
 
     series.forEach((s, i) => {
@@ -110,7 +111,7 @@ class Radar {
         'data:longestSeries': longestSeries,
         seriesName: Utils.escapeString(w.globals.seriesNames[i]),
         rel: i + 1,
-        'data:realIndex': i
+        'data:realIndex': i,
       })
 
       this.dataRadiusOfPercent[i] = []
@@ -119,10 +120,10 @@ class Radar {
 
       s.forEach((dv, j) => {
         const range = Math.abs(this.maxValue - this.minValue)
-        dv = dv + Math.abs(this.minValue)
+        dv = dv - this.minValue
 
         if (this.isLog) {
-          dv = this.coreUtils.getLogVal(dv, 0)
+          dv = this.coreUtils.getLogVal(this.logBase, dv, 0)
         }
 
         this.dataRadiusOfPercent[i][j] = dv / range
@@ -137,23 +138,23 @@ class Radar {
       )
       const paths = this.createPaths(dataPointsPos, {
         x: 0,
-        y: 0
+        y: 0,
       })
 
       // points
       elPointsMain = this.graphics.group({
-        class: 'apexcharts-series-markers-wrap apexcharts-element-hidden'
+        class: 'apexcharts-series-markers-wrap apexcharts-element-hidden',
       })
 
       // datapoints
       elDataPointsMain = this.graphics.group({
         class: `apexcharts-datalabels`,
-        'data:realIndex': i
+        'data:realIndex': i,
       })
 
       w.globals.delayedElements.push({
         el: elPointsMain.node,
-        index: i
+        index: i,
       })
 
       const defaultRenderedPathOptions = {
@@ -166,7 +167,7 @@ class Radar {
         shouldClipToGrid: false,
         bindEventsOnPaths: false,
         stroke: w.globals.stroke.colors[i],
-        strokeLineCap: w.config.stroke.lineCap
+        strokeLineCap: w.config.stroke.lineCap,
       }
 
       let pathFrom = null
@@ -184,13 +185,13 @@ class Radar {
             ? this.strokeWidth[i]
             : this.strokeWidth,
           fill: 'none',
-          drawShadow: false
+          drawShadow: false,
         })
 
         elSeries.add(renderedLinePath)
 
         let pathFill = fill.fillPath({
-          seriesNumber: i
+          seriesNumber: i,
         })
 
         let renderedAreaPath = this.graphics.renderPaths({
@@ -199,7 +200,7 @@ class Radar {
           pathTo: paths.areaPathsTo[p],
           strokeWidth: 0,
           fill: pathFill,
-          drawShadow: false
+          drawShadow: false,
         })
 
         if (w.config.chart.dropShadow.enabled) {
@@ -222,7 +223,7 @@ class Radar {
         let opts = markers.getMarkerConfig({
           cssClass: 'apexcharts-marker',
           seriesIndex: i,
-          dataPointIndex: j
+          dataPointIndex: j,
         })
 
         let point = this.graphics.drawMarker(
@@ -237,7 +238,7 @@ class Radar {
         point.node.setAttribute('default-marker-size', opts.pSize)
 
         let elPointsWrap = this.graphics.group({
-          class: 'apexcharts-series-markers'
+          class: 'apexcharts-series-markers',
         })
 
         if (elPointsWrap) {
@@ -254,7 +255,7 @@ class Radar {
           let text = dataLabelsConfig.formatter(w.globals.series[i][j], {
             seriesIndex: i,
             dataPointIndex: j,
-            w
+            w,
           })
 
           dataLabels.plotDataLabelsText({
@@ -267,8 +268,8 @@ class Radar {
             parent: elDataPointsMain,
             offsetCorrection: false,
             dataLabelsConfig: {
-              ...dataLabelsConfig
-            }
+              ...dataLabelsConfig,
+            },
           })
         }
         elSeries.add(elDataPointsMain)
@@ -278,7 +279,7 @@ class Radar {
     })
 
     this.drawPolygons({
-      parent: ret
+      parent: ret,
     })
 
     if (w.config.xaxis.labels.show) {
@@ -335,7 +336,7 @@ class Radar {
         if (i === 0) {
           this.yaxisLabelsTextsPos.push({
             x: p.x,
-            y: p.y
+            y: p.y,
           })
         }
 
@@ -374,7 +375,7 @@ class Radar {
 
     const xaxisLabelsConfig = w.config.xaxis.labels
     let elXAxisWrap = this.graphics.group({
-      class: 'apexcharts-xaxis'
+      class: 'apexcharts-xaxis',
     })
 
     let polygonPos = Utils.getPolygonPos(this.size, this.dataPointsLen)
@@ -389,10 +390,10 @@ class Radar {
         let text = formatter(label, {
           seriesIndex: -1,
           dataPointIndex: i,
-          w
+          w,
         })
 
-        dataLabels.plotDataLabelsText({
+        const dataLabelText = dataLabels.plotDataLabelsText({
           x: textPos.newX,
           y: textPos.newY,
           text,
@@ -400,6 +401,7 @@ class Radar {
           i,
           j: i,
           parent: elXAxisWrap,
+          className: 'apexcharts-xaxis-label',
           color:
             Array.isArray(xaxisLabelsConfig.style.colors) &&
             xaxisLabelsConfig.style.colors[i]
@@ -408,9 +410,19 @@ class Radar {
           dataLabelsConfig: {
             textAnchor: textPos.textAnchor,
             dropShadow: { enabled: false },
-            ...xaxisLabelsConfig
+            ...xaxisLabelsConfig,
           },
-          offsetCorrection: false
+          offsetCorrection: false,
+        })
+
+        dataLabelText.on('click', (e) => {
+          if (typeof w.config.chart.events.xAxisLabelClick === 'function') {
+            const opts = Object.assign({}, w, {
+              labelIndex: i,
+            })
+
+            w.config.chart.events.xAxisLabelClick(e, this.ctx, opts)
+          }
         })
       }
     })
@@ -448,7 +460,7 @@ class Radar {
       linePathsFrom,
       linePathsTo,
       areaPathsFrom,
-      areaPathsTo
+      areaPathsTo,
     }
   }
 
@@ -481,7 +493,7 @@ class Radar {
     return {
       textAnchor,
       newX,
-      newY
+      newY,
     }
   }
 

@@ -78,13 +78,28 @@ export default class UpdateHelpers {
 
             if (options.series) {
               // Replace the collapsed series data
-              for (let i = 0; i < w.globals.collapsedSeriesIndices.length; i++) {
-                let series = w.config.series[w.globals.collapsedSeriesIndices[i]]
-                w.globals.collapsedSeries[i].data = w.globals.axisCharts ? series.data.slice() : series
+              for (
+                let i = 0;
+                i < w.globals.collapsedSeriesIndices.length;
+                i++
+              ) {
+                let series =
+                  w.config.series[w.globals.collapsedSeriesIndices[i]]
+                w.globals.collapsedSeries[i].data = w.globals.axisCharts
+                  ? series.data.slice()
+                  : series
               }
-              for (let i = 0; i < w.globals.ancillaryCollapsedSeriesIndices.length; i++) {
-                let series = w.config.series[w.globals.ancillaryCollapsedSeriesIndices[i]]
-                w.globals.ancillaryCollapsedSeries[i].data = w.globals.axisCharts ? series.data.slice() : series
+              for (
+                let i = 0;
+                i < w.globals.ancillaryCollapsedSeriesIndices.length;
+                i++
+              ) {
+                let series =
+                  w.config.series[w.globals.ancillaryCollapsedSeriesIndices[i]]
+                w.globals.ancillaryCollapsedSeries[i].data = w.globals
+                  .axisCharts
+                  ? series.data.slice()
+                  : series
               }
 
               // Ensure that auto-generated axes are scaled to the visible data
@@ -137,6 +152,7 @@ export default class UpdateHelpers {
       }
 
       if (overwriteInitialSeries) {
+        w.globals.initialConfig.series = Utils.clone(w.config.series)
         w.globals.initialSeries = Utils.clone(w.config.series)
       }
       return this.ctx.update().then(() => {
@@ -151,10 +167,13 @@ export default class UpdateHelpers {
 
     return {
       ...w.config.series[i],
-      name: s.name ? s.name : ser && ser.name,
-      color: s.color ? s.color : ser && ser.color,
-      type: s.type ? s.type : ser && ser.type,
-      data: s.data ? s.data : ser && ser.data
+      name: s.name ? s.name : ser?.name,
+      color: s.color ? s.color : ser?.color,
+      type: s.type ? s.type : ser?.type,
+      group: s.group ? s.group : ser?.group,
+      hidden: typeof s.hidden !== 'undefined' ? s.hidden : ser?.hidden,
+      data: s.data ? s.data : ser?.data,
+      zIndex: typeof s.zIndex !== 'undefined' ? s.zIndex : i,
     }
   }
 
@@ -218,8 +237,11 @@ export default class UpdateHelpers {
   }
 
   forceYAxisUpdate(options) {
-    const w = this.w
-    if (w.config.chart.stacked && w.config.chart.stackType === '100%') {
+    if (
+      options.chart &&
+      options.chart.stacked &&
+      options.chart.stackType === '100%'
+    ) {
       if (Array.isArray(options.yaxis)) {
         options.yaxis.forEach((yaxe, index) => {
           options.yaxis[index].min = 0

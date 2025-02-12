@@ -24,35 +24,16 @@ class BarStacked extends Bar {
     this.barHelpers.initVariables(series)
 
     if (w.config.chart.stackType === '100%') {
-      series = w.globals.seriesPercent.slice()
+      series = w.globals.comboCharts
+        ? seriesIndex.map((_) => w.globals.seriesPercent[_])
+        : w.globals.seriesPercent.slice()
     }
 
     this.series = series
-
-    this.totalItems = 0
-
-    this.prevY = [] // y position on chart
-    this.prevX = [] // x position on chart
-    this.prevYF = [] // y position including shapes on chart
-    this.prevXF = [] // x position including shapes on chart
-    this.prevYVal = [] // y values (series[i][j]) in columns
-    this.prevXVal = [] // x values (series[i][j]) in bars
-
-    this.xArrj = [] // xj indicates x position on graph in bars
-    this.xArrjF = [] // xjF indicates bar's x position + roundedShape's positions in bars
-    this.xArrjVal = [] // x val means the actual series's y values in horizontal/bars
-    this.yArrj = [] // yj indicates y position on graph in columns
-    this.yArrjF = [] // yjF indicates bar's y position + roundedShape's positions in columns
-    this.yArrjVal = [] // y val means the actual series's y values in columns
-
-    for (let sl = 0; sl < series.length; sl++) {
-      if (series[sl].length > 0) {
-        this.totalItems += series[sl].length
-      }
-    }
+    this.barHelpers.initializeStackedPrevVars(this)
 
     let ret = this.graphics.group({
-      class: 'apexcharts-bar-series apexcharts-plot-series'
+      class: 'apexcharts-bar-series apexcharts-plot-series',
     })
 
     let x = 0
@@ -64,13 +45,18 @@ class BarStacked extends Bar {
       let zeroH // zeroH is the baseline where 0 meets y axis
       let zeroW // zeroW is the baseline where 0 meets x axis
 
+      let realIndex = w.globals.comboCharts ? seriesIndex[i] : i
+      let { groupIndex, columnGroupIndex } =
+        this.barHelpers.getGroupIndex(realIndex)
+      this.groupCtx = this[w.globals.seriesGroups[groupIndex]]
+
       let xArrValues = []
       let yArrValues = []
 
-      let realIndex = w.globals.comboCharts ? seriesIndex[i] : i
-
+      let translationsIndex = 0
       if (this.yRatio.length > 1) {
-        this.yaxisIndex = realIndex
+        this.yaxisIndex = w.globals.seriesYAxisReverseMap[realIndex][0]
+        translationsIndex = realIndex
       }
 
       this.isReversed =
@@ -82,14 +68,18 @@ class BarStacked extends Bar {
         class: `apexcharts-series`,
         seriesName: Utils.escapeString(w.globals.seriesNames[realIndex]),
         rel: i + 1,
-        'data:realIndex': realIndex
+        'data:realIndex': realIndex,
       })
       this.ctx.series.addCollapsedClassToSeries(elSeries, realIndex)
 
       // eldatalabels
       let elDataLabelsWrap = this.graphics.group({
         class: 'apexcharts-datalabels',
-        'data:realIndex': realIndex
+        'data:realIndex': realIndex,
+      })
+
+      let elGoalsMarkers = this.graphics.group({
+        class: 'apexcharts-bar-goals-markers',
       })
 
       let barHeight = 0
@@ -101,7 +91,8 @@ class BarStacked extends Bar {
         xDivision,
         yDivision,
         zeroH,
-        zeroW
+        zeroW,
+        translationsIndex
       )
       y = initPositions.y
       barHeight = initPositions.barHeight
@@ -113,35 +104,30 @@ class BarStacked extends Bar {
       xDivision = initPositions.xDivision
       zeroH = initPositions.zeroH
 
-      this.yArrj = []
-      this.yArrjF = []
-      this.yArrjVal = []
-      this.xArrj = []
-      this.xArrjF = []
-      this.xArrjVal = []
+      w.globals.barHeight = barHeight
+      w.globals.barWidth = barWidth
 
-      // if (!this.horizontal) {
-      // this.xArrj.push(x + barWidth / 2)
-      // }
+      this.barHelpers.initializeStackedXYVars(this)
 
-      // fix issue #1215;
       // where all stack bar disappear after collapsing the first series
-      // sol: if only 1 arr in this.prevY(this.prevY.length === 1) and all are NaN
-      if (this.prevY.length === 1 && this.prevY[0].every((val) => isNaN(val))) {
-        // make this.prevY[0] all zeroH
-        this.prevY[0] = this.prevY[0].map((val) => zeroH)
-        // make this.prevYF[0] all 0
-        this.prevYF[0] = this.prevYF[0].map((val) => 0)
+      if (
+        this.groupCtx.prevY.length === 1 &&
+        this.groupCtx.prevY[0].every((val) => isNaN(val))
+      ) {
+        this.groupCtx.prevY[0] = this.groupCtx.prevY[0].map(() => zeroH)
+        this.groupCtx.prevYF[0] = this.groupCtx.prevYF[0].map(() => 0)
       }
 
       for (let j = 0; j < w.globals.dataPoints; j++) {
         const strokeWidth = this.barHelpers.getStrokeWidth(i, j, realIndex)
         const commonPathOpts = {
-          indexes: { i, j, realIndex, bc },
+          indexes: { i, j, realIndex, translationsIndex, bc },
           strokeWidth,
           x,
           y,
-          elSeries
+          elSeries,
+          columnGroupIndex,
+          seriesGroup: w.globals.seriesGroups[groupIndex],
         }
         let paths = null
         if (this.isHorizontal) {
@@ -149,7 +135,7 @@ class BarStacked extends Bar {
             ...commonPathOpts,
             zeroW,
             barHeight,
-            yDivision
+            yDivision,
           })
           barWidth = this.series[i][j] / this.invertedYRatio
         } else {
@@ -157,9 +143,22 @@ class BarStacked extends Bar {
             ...commonPathOpts,
             xDivision,
             barWidth,
-            zeroH
+            zeroH,
           })
-          barHeight = this.series[i][j] / this.yRatio[this.yaxisIndex]
+          barHeight = this.series[i][j] / this.yRatio[translationsIndex]
+        }
+
+        const barGoalLine = this.barHelpers.drawGoalLine({
+          barXPosition: paths.barXPosition,
+          barYPosition: paths.barYPosition,
+          goalX: paths.goalX,
+          goalY: paths.goalY,
+          barHeight,
+          barWidth,
+        })
+
+        if (barGoalLine) {
+          elGoalsMarkers.add(barGoalLine)
         }
 
         y = paths.y
@@ -170,11 +169,29 @@ class BarStacked extends Bar {
 
         let pathFill = this.barHelpers.getPathFillColor(series, i, j, realIndex)
 
+        let classes = ''
+
+        if (w.globals.isBarHorizontal) {
+          if (
+            this.barHelpers.arrBorderRadius[realIndex][j] === 'bottom' &&
+            w.globals.series[realIndex][j] > 0
+          ) {
+            classes = 'apexcharts-flip-x'
+          }
+        } else {
+          if (
+            this.barHelpers.arrBorderRadius[realIndex][j] === 'bottom' &&
+            w.globals.series[realIndex][j] > 0
+          ) {
+            classes = 'apexcharts-flip-y'
+          }
+        }
         elSeries = this.renderSeries({
           realIndex,
           pathFill,
           j,
           i,
+          columnGroupIndex,
           pathFrom: paths.pathFrom,
           pathTo: paths.pathTo,
           strokeWidth,
@@ -185,8 +202,10 @@ class BarStacked extends Bar {
           barHeight,
           barWidth,
           elDataLabelsWrap,
+          elGoalsMarkers,
           type: 'bar',
-          visibleSeries: 0
+          visibleSeries: columnGroupIndex,
+          classes,
         })
       }
 
@@ -195,12 +214,12 @@ class BarStacked extends Bar {
       w.globals.seriesYvalues[realIndex] = yArrValues
 
       // push all current y values array to main PrevY Array
-      this.prevY.push(this.yArrj)
-      this.prevYF.push(this.yArrjF)
-      this.prevYVal.push(this.yArrjVal)
-      this.prevX.push(this.xArrj)
-      this.prevXF.push(this.xArrjF)
-      this.prevXVal.push(this.xArrjVal)
+      this.groupCtx.prevY.push(this.groupCtx.yArrj)
+      this.groupCtx.prevYF.push(this.groupCtx.yArrjF)
+      this.groupCtx.prevYVal.push(this.groupCtx.yArrjVal)
+      this.groupCtx.prevX.push(this.groupCtx.xArrj)
+      this.groupCtx.prevXF.push(this.groupCtx.xArrjF)
+      this.groupCtx.prevXVal.push(this.groupCtx.xArrjVal)
 
       ret.add(elSeries)
     }
@@ -208,23 +227,33 @@ class BarStacked extends Bar {
     return ret
   }
 
-  initialPositions(x, y, xDivision, yDivision, zeroH, zeroW) {
+  initialPositions(
+    x,
+    y,
+    xDivision,
+    yDivision,
+    zeroH,
+    zeroW,
+    translationsIndex
+  ) {
     let w = this.w
 
     let barHeight, barWidth
     if (this.isHorizontal) {
       // height divided into equal parts
       yDivision = w.globals.gridHeight / w.globals.dataPoints
-      barHeight = yDivision
 
-      barHeight =
-        (barHeight * parseInt(w.config.plotOptions.bar.barHeight, 10)) / 100
-
+      let userBarHeight = w.config.plotOptions.bar.barHeight
+      if (String(userBarHeight).indexOf('%') === -1) {
+        barHeight = parseInt(userBarHeight, 10)
+      } else {
+        barHeight = (yDivision * parseInt(userBarHeight, 10)) / 100
+      }
       zeroW =
-        this.baseLineInvertedY +
         w.globals.padHorizontal +
-        (this.isReversed ? w.globals.gridWidth : 0) -
-        (this.isReversed ? this.baseLineInvertedY * 2 : 0)
+        (this.isReversed
+          ? w.globals.gridWidth - this.baseLineInvertedY
+          : this.baseLineInvertedY)
 
       // initial y position is half of barHeight * half of number of Bars
       y = (yDivision - barHeight) / 2
@@ -234,32 +263,46 @@ class BarStacked extends Bar {
 
       barWidth = xDivision
 
+      let userColumnWidth = w.config.plotOptions.bar.columnWidth
       if (w.globals.isXNumeric && w.globals.dataPoints > 1) {
-        // the check (w.globals.dataPoints > 1) fixes apexcharts.js #1617
         xDivision = w.globals.minXDiff / this.xRatio
         barWidth = (xDivision * parseInt(this.barOptions.columnWidth, 10)) / 100
+      } else if (String(userColumnWidth).indexOf('%') === -1) {
+        barWidth = parseInt(userColumnWidth, 10)
       } else {
-        barWidth =
-          (barWidth * parseInt(w.config.plotOptions.bar.columnWidth, 10)) / 100
+        barWidth *= parseInt(userColumnWidth, 10) / 100
       }
 
-      zeroH =
-        this.baseLineY[this.yaxisIndex] +
-        (this.isReversed ? w.globals.gridHeight : 0) -
-        (this.isReversed ? this.baseLineY[this.yaxisIndex] * 2 : 0)
+      if (this.isReversed) {
+        zeroH = this.baseLineY[translationsIndex]
+      } else {
+        zeroH = w.globals.gridHeight - this.baseLineY[translationsIndex]
+      }
 
-      // initial x position is one third of barWidth
+      // initial x position is the left-most edge of the first bar relative to
+      // the left-most side of the grid area.
       x = w.globals.padHorizontal + (xDivision - barWidth) / 2
     }
+
+    // Up to this point, barWidth is the width that will accommodate all bars
+    // at each datapoint or category.
+
+    // The crude subdivision here assumes the series within each group are
+    // stacked. If there is no stacking then the barWidth/barHeight is
+    // further divided later by the number of series in the group. So, eg, two
+    // groups of three series would become six bars side-by-side unstacked,
+    // or two bars stacked.
+    let subDivisions = w.globals.barGroups.length || 1
+
     return {
       x,
       y,
       yDivision,
       xDivision,
-      barHeight,
-      barWidth,
+      barHeight: barHeight / subDivisions,
+      barWidth: barWidth / subDivisions,
       zeroH,
-      zeroW
+      zeroW,
     }
   }
 
@@ -270,35 +313,42 @@ class BarStacked extends Bar {
     zeroW,
     x,
     y,
+    columnGroupIndex,
+    seriesGroup,
     yDivision,
-    elSeries
+    elSeries,
   }) {
     let w = this.w
-    let barYPosition = y
+    let barYPosition = y + columnGroupIndex * barHeight
     let barXPosition
     let i = indexes.i
     let j = indexes.j
+    let realIndex = indexes.realIndex
+    let translationsIndex = indexes.translationsIndex
 
     let prevBarW = 0
-    for (let k = 0; k < this.prevXF.length; k++) {
-      prevBarW = prevBarW + this.prevXF[k][j]
+    for (let k = 0; k < this.groupCtx.prevXF.length; k++) {
+      prevBarW = prevBarW + this.groupCtx.prevXF[k][j]
     }
 
-    if (i > 0) {
+    let gsi = i // an index to keep track of the series inside a group
+    gsi = seriesGroup.indexOf(w.config.series[realIndex].name)
+
+    if (gsi > 0) {
       let bXP = zeroW
 
-      if (this.prevXVal[i - 1][j] < 0) {
+      if (this.groupCtx.prevXVal[gsi - 1][j] < 0) {
         bXP =
           this.series[i][j] >= 0
-            ? this.prevX[i - 1][j] +
+            ? this.groupCtx.prevX[gsi - 1][j] +
               prevBarW -
               (this.isReversed ? prevBarW : 0) * 2
-            : this.prevX[i - 1][j]
-      } else if (this.prevXVal[i - 1][j] >= 0) {
+            : this.groupCtx.prevX[gsi - 1][j]
+      } else if (this.groupCtx.prevXVal[gsi - 1][j] >= 0) {
         bXP =
           this.series[i][j] >= 0
-            ? this.prevX[i - 1][j]
-            : this.prevX[i - 1][j] -
+            ? this.groupCtx.prevX[gsi - 1][j]
+            : this.groupCtx.prevX[gsi - 1][j] -
               prevBarW +
               (this.isReversed ? prevBarW : 0) * 2
       }
@@ -324,11 +374,13 @@ class BarStacked extends Bar {
       x1: barXPosition,
       x2: x,
       strokeWidth,
+      isReversed: this.isReversed,
       series: this.series,
       realIndex: indexes.realIndex,
+      seriesGroup,
       i,
       j,
-      w
+      w,
     })
 
     this.barHelpers.barBackground({
@@ -336,7 +388,7 @@ class BarStacked extends Bar {
       i,
       y1: barYPosition,
       y2: barHeight,
-      elSeries
+      elSeries,
     })
 
     y = y + yDivision
@@ -344,8 +396,18 @@ class BarStacked extends Bar {
     return {
       pathTo: paths.pathTo,
       pathFrom: paths.pathFrom,
+      goalX: this.barHelpers.getGoalValues(
+        'x',
+        zeroW,
+        null,
+        i,
+        j,
+        translationsIndex
+      ),
+      barXPosition,
+      barYPosition,
       x,
-      y
+      y,
     }
   }
 
@@ -356,44 +418,59 @@ class BarStacked extends Bar {
     xDivision,
     barWidth,
     zeroH,
-    strokeWidth,
-    elSeries
+    columnGroupIndex,
+    seriesGroup,
+    elSeries,
   }) {
     let w = this.w
     let i = indexes.i
     let j = indexes.j
     let bc = indexes.bc
+    let realIndex = indexes.realIndex
+    let translationsIndex = indexes.translationsIndex
 
     if (w.globals.isXNumeric) {
-      let seriesVal = w.globals.seriesX[i][j]
+      let seriesVal = w.globals.seriesX[realIndex][j]
       if (!seriesVal) seriesVal = 0
-      x = (seriesVal - w.globals.minX) / this.xRatio - barWidth / 2
+      // TODO: move the barWidth factor to barXPosition
+      x =
+        (seriesVal - w.globals.minX) / this.xRatio -
+        (barWidth / 2) * w.globals.barGroups.length
     }
 
-    let barXPosition = x
+    let barXPosition = x + columnGroupIndex * barWidth
     let barYPosition
 
     let prevBarH = 0
-    for (let k = 0; k < this.prevYF.length; k++) {
+    for (let k = 0; k < this.groupCtx.prevYF.length; k++) {
       // fix issue #1215
-      // in case where this.prevYF[k][j] is NaN, use 0 instead
-      prevBarH = prevBarH + (!isNaN(this.prevYF[k][j]) ? this.prevYF[k][j] : 0)
+      // in case where this.groupCtx.prevYF[k][j] is NaN, use 0 instead
+      prevBarH =
+        prevBarH +
+        (!isNaN(this.groupCtx.prevYF[k][j]) ? this.groupCtx.prevYF[k][j] : 0)
     }
 
+    let gsi = i // an index to keep track of the series inside a group
+    if (seriesGroup) {
+      gsi = seriesGroup.indexOf(w.globals.seriesNames[realIndex])
+    }
     if (
-      (i > 0 && !w.globals.isXNumeric) ||
-      (i > 0 &&
+      (gsi > 0 && !w.globals.isXNumeric) ||
+      (gsi > 0 &&
         w.globals.isXNumeric &&
-        w.globals.seriesX[i - 1][j] === w.globals.seriesX[i][j])
+        w.globals.seriesX[realIndex - 1][j] === w.globals.seriesX[realIndex][j])
     ) {
       let bYP
       let prevYValue
-      const p = Math.min(this.yRatio.length + 1, i + 1)
-      if (this.prevY[i - 1] !== undefined) {
+      const p = Math.min(this.yRatio.length + 1, realIndex + 1)
+      if (
+        this.groupCtx.prevY[gsi - 1] !== undefined &&
+        this.groupCtx.prevY[gsi - 1].length
+      ) {
         for (let ii = 1; ii < p; ii++) {
-          if (!isNaN(this.prevY[i - ii][j])) {
+          if (!isNaN(this.groupCtx.prevY[gsi - ii]?.[j])) {
             // find the previous available value to give prevYValue
-            prevYValue = this.prevY[i - ii][j]
+            prevYValue = this.groupCtx.prevY[gsi - ii][j]
             // if found it, break the loop
             break
           }
@@ -402,14 +479,14 @@ class BarStacked extends Bar {
 
       for (let ii = 1; ii < p; ii++) {
         // find the previous available value(non-NaN) to give bYP
-        if (this.prevYVal[i - ii][j] < 0) {
+        if (this.groupCtx.prevYVal[gsi - ii]?.[j] < 0) {
           bYP =
             this.series[i][j] >= 0
               ? prevYValue - prevBarH + (this.isReversed ? prevBarH : 0) * 2
               : prevYValue
           // found it? break the loop
           break
-        } else if (this.prevYVal[i - ii][j] >= 0) {
+        } else if (this.groupCtx.prevYVal[gsi - ii]?.[j] >= 0) {
           bYP =
             this.series[i][j] >= 0
               ? prevYValue
@@ -424,38 +501,50 @@ class BarStacked extends Bar {
       // if this.prevYF[0] is all 0 resulted from line #486
       // AND every arr starting from the second only contains NaN
       if (
-        this.prevYF[0].every((val) => val === 0) &&
-        this.prevYF.slice(1, i).every((arr) => arr.every((val) => isNaN(val)))
+        this.groupCtx.prevYF[0]?.every((val) => val === 0) &&
+        this.groupCtx.prevYF
+          .slice(1, gsi)
+          .every((arr) => arr.every((val) => isNaN(val)))
       ) {
-        // Use the same calc way as line #485
-        barYPosition = w.globals.gridHeight - zeroH
+        barYPosition = zeroH
       } else {
         // Nothing special
         barYPosition = bYP
       }
     } else {
-      // the first series will not have prevY values, also if the prev index's series X doesn't matches the current index's series X, then start from zero
-      barYPosition = w.globals.gridHeight - zeroH
+      // the first series will not have prevY values, also if the prev index's
+      // series X doesn't matches the current index's series X, then start from
+      // zero
+      barYPosition = zeroH
     }
 
-    y =
-      barYPosition -
-      this.series[i][j] / this.yRatio[this.yaxisIndex] +
-      (this.isReversed ? this.series[i][j] / this.yRatio[this.yaxisIndex] : 0) *
-        2
+    if (this.series[i][j]) {
+      y =
+        barYPosition -
+        this.series[i][j] / this.yRatio[translationsIndex] +
+        (this.isReversed
+          ? this.series[i][j] / this.yRatio[translationsIndex]
+          : 0) *
+          2
+    } else {
+      // fixes #3610
+      y = barYPosition
+    }
 
     const paths = this.barHelpers.getColumnPaths({
       barXPosition,
       barWidth,
       y1: barYPosition,
       y2: y,
-      yRatio: this.yRatio[this.yaxisIndex],
+      yRatio: this.yRatio[translationsIndex],
       strokeWidth: this.strokeWidth,
+      isReversed: this.isReversed,
       series: this.series,
+      seriesGroup,
       realIndex: indexes.realIndex,
       i,
       j,
-      w
+      w,
     })
 
     this.barHelpers.barBackground({
@@ -464,16 +553,16 @@ class BarStacked extends Bar {
       i,
       x1: barXPosition,
       x2: barWidth,
-      elSeries
+      elSeries,
     })
-
-    x = x + xDivision
 
     return {
       pathTo: paths.pathTo,
       pathFrom: paths.pathFrom,
-      x: w.globals.isXNumeric ? x - xDivision : x,
-      y
+      goalY: this.barHelpers.getGoalValues('y', null, zeroH, i, j),
+      barXPosition,
+      x: w.globals.isXNumeric ? x : x + xDivision,
+      y,
     }
   }
 }

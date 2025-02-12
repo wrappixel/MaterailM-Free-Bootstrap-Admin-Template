@@ -73,13 +73,13 @@ export default class Position {
     if (ttCtx.ycrosshairs !== null) {
       Graphics.setAttrs(ttCtx.ycrosshairs, {
         y1: cy,
-        y2: cy
+        y2: cy,
       })
     }
     if (ttCtx.ycrosshairsHidden !== null) {
       Graphics.setAttrs(ttCtx.ycrosshairsHidden, {
         y1: cy,
-        y2: cy
+        y2: cy,
       })
     }
   }
@@ -163,22 +163,22 @@ export default class Position {
    * @memberof Position
    * @param {int} - cx = point's x position, wherever point's x is, you need to move tooltip
    * @param {int} - cy = point's y position, wherever point's y is, you need to move tooltip
-   * @param {int} - r = point's radius
+   * @param {int} - markerSize = point's size
    */
-  moveTooltip(cx, cy, r = null) {
+  moveTooltip(cx, cy, markerSize = null) {
     let w = this.w
 
     let ttCtx = this.ttCtx
     const tooltipEl = ttCtx.getElTooltip()
     let tooltipRect = ttCtx.tooltipRect
 
-    let pointR = r !== null ? parseFloat(r) : 1
+    let pointSize = markerSize !== null ? parseFloat(markerSize) : 1
 
-    let x = parseFloat(cx) + pointR + 5
-    let y = parseFloat(cy) + pointR / 2 // - tooltipRect.ttHeight / 2
+    let x = parseFloat(cx) + pointSize + 5
+    let y = parseFloat(cy) + pointSize / 2 // - tooltipRect.ttHeight / 2
 
     if (x > w.globals.gridWidth / 2) {
-      x = x - tooltipRect.ttWidth - pointR - 10
+      x = x - tooltipRect.ttWidth - pointSize - 10
     }
 
     if (x > w.globals.gridWidth - tooltipRect.ttWidth - 10) {
@@ -192,19 +192,19 @@ export default class Position {
     if (w.config.tooltip.followCursor) {
       const elGrid = ttCtx.getElGrid()
       const seriesBound = elGrid.getBoundingClientRect()
-      y =
-        ttCtx.e.clientY +
-        w.globals.translateY -
-        seriesBound.top -
-        tooltipRect.ttHeight / 2
+
+      x = ttCtx.e.clientX - seriesBound.left
+      if (x > w.globals.gridWidth / 2) {
+        x = x - ttCtx.tooltipRect.ttWidth
+      }
+      y = ttCtx.e.clientY + w.globals.translateY - seriesBound.top
+      if (y > w.globals.gridHeight / 2) {
+        y = y - ttCtx.tooltipRect.ttHeight
+      }
     } else {
       if (!w.globals.isBarHorizontal) {
         if (tooltipRect.ttHeight / 2 + y > w.globals.gridHeight) {
           y = w.globals.gridHeight - tooltipRect.ttHeight + w.globals.translateY
-        }
-
-        if (y < 0) {
-          y = 0
         }
       }
     }
@@ -244,6 +244,7 @@ export default class Position {
     let ttCtx = this.ttCtx
     let cx = 0
     let cy = 0
+    const graphics = new Graphics(this.ctx)
 
     let pointsArr = w.globals.pointsArray
 
@@ -260,21 +261,19 @@ export default class Position {
       return
     }
 
-    cx = pointsArr[capturedSeries][j][0]
-    cy = pointsArr[capturedSeries][j][1] ? pointsArr[capturedSeries][j][1] : 0
+    cx = pointsArr[capturedSeries][j]?.[0]
+    cy = pointsArr[capturedSeries][j]?.[1] || 0
 
     let point = w.globals.dom.baseEl.querySelector(
-      `.apexcharts-series[data\\:realIndex='${capturedSeries}'] .apexcharts-series-markers circle`
+      `.apexcharts-series[data\\:realIndex='${capturedSeries}'] .apexcharts-series-markers path`
     )
 
     if (point && cy < w.globals.gridHeight && cy > 0) {
-      point.setAttribute('r', hoverSize)
+      const shape = point.getAttribute('shape')
 
-      point.setAttribute('cx', cx)
-      point.setAttribute('cy', cy)
+      const path = graphics.getMarkerPath(cx, cy, shape, hoverSize * 1.5)
+      point.setAttribute('d', path)
     }
-
-    // point.style.opacity = w.config.markers.hover.opacity
 
     this.moveXCrosshairs(cx)
 
@@ -295,7 +294,14 @@ export default class Position {
     let pointsArr = w.globals.pointsArray
 
     let series = new Series(this.ctx)
-    activeSeries = series.getActiveConfigSeriesIndex(true)
+    const graphics = new Graphics(this.ctx)
+
+    activeSeries = series.getActiveConfigSeriesIndex('asc', [
+      'line',
+      'area',
+      'scatter',
+      'bubble',
+    ])
 
     let hoverSize = ttCtx.tooltipUtil.getHoverMarkerSize(activeSeries)
 
@@ -319,18 +325,28 @@ export default class Position {
         }
         if (pointArr && pointArr.length) {
           let pcy = pointsArr[p][j][1]
+          let pcy2
           points[p].setAttribute('cx', cx)
 
+          const shape = points[p].getAttribute('shape')
+
+          if (w.config.chart.type === 'rangeArea' && !w.globals.comboCharts) {
+            const rangeStartIndex = j + w.globals.series[p].length
+            pcy2 = pointsArr[p][rangeStartIndex][1]
+            const pcyDiff = Math.abs(pcy - pcy2) / 2
+
+            pcy = pcy - pcyDiff
+          }
           if (
             pcy !== null &&
             !isNaN(pcy) &&
             pcy < w.globals.gridHeight + hoverSize &&
             pcy + hoverSize > 0
           ) {
-            points[p] && points[p].setAttribute('r', hoverSize)
-            points[p] && points[p].setAttribute('cy', pcy)
+            const path = graphics.getMarkerPath(cx, pcy, shape, hoverSize)
+            points[p].setAttribute('d', path)
           } else {
-            points[p] && points[p].setAttribute('r', 0)
+            points[p].setAttribute('d', '')
           }
         }
       }
@@ -339,12 +355,11 @@ export default class Position {
     this.moveXCrosshairs(cx)
 
     if (!ttCtx.fixedTooltip) {
-      let tcy = cy || w.globals.gridHeight
-      this.moveTooltip(cx, tcy, hoverSize)
+      this.moveTooltip(cx, cy || w.globals.gridHeight, hoverSize)
     }
   }
 
-  moveStickyTooltipOverBars(j) {
+  moveStickyTooltipOverBars(j, capturedSeries) {
     const w = this.w
     const ttCtx = this.ttCtx
 
@@ -359,23 +374,32 @@ export default class Position {
 
     if (w.globals.isBarHorizontal) {
       let series = new Series(this.ctx)
-      i = series.getActiveConfigSeriesIndex(false, 'desc') + 1
+      i = series.getActiveConfigSeriesIndex('desc') + 1
     }
     let jBar = w.globals.dom.baseEl.querySelector(
       `.apexcharts-bar-series .apexcharts-series[rel='${i}'] path[j='${j}'], .apexcharts-candlestick-series .apexcharts-series[rel='${i}'] path[j='${j}'], .apexcharts-boxPlot-series .apexcharts-series[rel='${i}'] path[j='${j}'], .apexcharts-rangebar-series .apexcharts-series[rel='${i}'] path[j='${j}']`
     )
+    if (!jBar && typeof capturedSeries === 'number') {
+      // Try with captured series index
+      jBar = w.globals.dom.baseEl.querySelector(
+        `.apexcharts-bar-series .apexcharts-series[data\\:realIndex='${capturedSeries}'] path[j='${j}'],
+        .apexcharts-candlestick-series .apexcharts-series[data\\:realIndex='${capturedSeries}'] path[j='${j}'],
+        .apexcharts-boxPlot-series .apexcharts-series[data\\:realIndex='${capturedSeries}'] path[j='${j}'],
+        .apexcharts-rangebar-series .apexcharts-series[data\\:realIndex='${capturedSeries}'] path[j='${j}']`
+      )
+    }
 
     let bcx = jBar ? parseFloat(jBar.getAttribute('cx')) : 0
     let bcy = jBar ? parseFloat(jBar.getAttribute('cy')) : 0
     let bw = jBar ? parseFloat(jBar.getAttribute('barWidth')) : 0
-    let bh = jBar ? parseFloat(jBar.getAttribute('barHeight')) : 0
 
     const elGrid = ttCtx.getElGrid()
     let seriesBound = elGrid.getBoundingClientRect()
 
     const isBoxOrCandle =
-      jBar.classList.contains('apexcharts-candlestick-area') ||
-      jBar.classList.contains('apexcharts-boxPlot-area')
+      jBar &&
+      (jBar.classList.contains('apexcharts-candlestick-area') ||
+        jBar.classList.contains('apexcharts-boxPlot-area'))
     if (w.globals.isXNumeric) {
       if (jBar && !isBoxOrCandle) {
         bcx = bcx - (barLen % 2 !== 0 ? bw / 2 : 0)
@@ -407,19 +431,7 @@ export default class Position {
         }
       }
     } else {
-      if (bcy > w.globals.gridHeight / 2) {
-        bcy = bcy - ttCtx.tooltipRect.ttHeight
-      }
-
-      bcy = bcy + w.config.grid.padding.top + bh / 3
-
-      if (bcy + bh > w.globals.gridHeight) {
-        bcy = w.globals.gridHeight - bh
-      }
-    }
-
-    if (bcy < -10) {
-      bcy = -10
+      bcy = bcy - ttCtx.tooltipRect.ttHeight
     }
 
     if (!w.globals.isBarHorizontal) {
@@ -427,8 +439,7 @@ export default class Position {
     }
 
     if (!ttCtx.fixedTooltip) {
-      let tcy = bcy || w.globals.gridHeight
-      this.moveTooltip(bcx, tcy)
+      this.moveTooltip(bcx, bcy || w.globals.gridHeight)
     }
   }
 }
