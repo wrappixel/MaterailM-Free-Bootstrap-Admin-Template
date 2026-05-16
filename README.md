@@ -14,7 +14,7 @@
 <p align="center">Download most useful and comprehensive 🚀 Free Bootstrap admin template built for developers 🛠</p>
 
 
-[![MaterialM Free Bootstrap Admin Demo Screenshot](src="https://images.wrappixel.com/templates/free/materialm/materialM-free-preview-img.webp")](https://wrappixel.com/templates/materialm-free-bootstrap-admin/?ref=376)
+[![MaterialM Free Bootstrap Admin Demo Screenshot](https://images.wrappixel.com/templates/free/materialm/materialM-free-preview-img.webp)](https://wrappixel.com/templates/materialm-free-bootstrap-admin/?ref=376)
 
 
 
